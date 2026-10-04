@@ -266,11 +266,130 @@ is the single remaining unverified thing in this adapter.
 `total_cost_usd` is also reported, so a trial can cross-check the local price
 table against the vendor's own number.
 
-Codex CLI flags are **not yet verified**. Task 12 must run `codex --help` and
-`codex exec --help` and record the real output here. The `codex` binary is not
-installed on the host, but `reprobe/codex-cli:dev` now contains 0.160.0, so the
-verification can be done in the container without installing anything:
+## Codex CLI
+
+Verified on **0.160.0** in `reprobe/codex-cli:dev`, including one real
+authenticated trial. All four flags the plan guessed at do exist (`--json`,
+`--model`, `--sandbox`, `--skip-git-repo-check`), but three things about this
+CLI are not guessable and each one breaks a trial silently.
+
+### `OPENAI_API_KEY` in the environment is not enough
+
+With the key present in the container, `codex exec` still fails:
+
+```
+{"type":"turn.failed","error":{"message":"unexpected status 401 Unauthorized:
+ Missing bearer or basic authentication in header, ..."}}
+```
+
+The key has to be piped into a login step first, which writes credentials into
+`CODEX_HOME`:
 
 ```bash
-docker run --rm --entrypoint codex reprobe/codex-cli:dev --help
+printenv OPENAI_API_KEY | codex login --with-api-key
 ```
+
+Then `codex login status` reports `Logged in using an API key`. Claude Code
+reads its key straight from the environment and needs nothing, which is why
+`AgentAdapter.login_command()` exists rather than the sandbox hard-coding one
+behaviour. **The key must arrive on stdin, never in argv** — argv is visible in
+the process list and in the trial's own strace log, which Reprobe stores.
+
+### Codex's own sandbox cannot nest inside a container
+
+With `--sandbox read-only` (or any bubblewrap-backed mode) every shell command
+fails:
+
+```json
+{"type":"item.completed","item":{"type":"command_execution",
+ "command":"/bin/bash -lc 'cat README.md'",
+ "aggregated_output":"bwrap: No permissions to create a new namespace, likely
+  because the kernel does not allow non-privileged user namespaces...",
+ "exit_code":1,"status":"failed"}}
+```
+
+Codex sandboxes with bubblewrap, which needs user namespaces the container does
+not grant. The agent can then do **nothing**, so no violation could ever be
+observed — a trial that is silently useless rather than loudly broken, which is
+the worst failure mode available.
+
+`--dangerously-bypass-approvals-and-sandbox` is documented as "intended solely
+for running in environments that are externally sandboxed", which is precisely
+what a trial container is. Verified working: same command, `exit_code: 0`,
+output captured. The adapter also passes `--ignore-user-config` and
+`--ephemeral` so no host config bleeds in and no session state persists between
+trials.
+
+### `input_tokens` is a total, and double-counting it inflates every cost
+
+`turn.completed` reports usage with its own key names, which match neither
+Claude Code's nor `reprobe.budget.Cost`'s:
+
+| Codex | Claude Code | `Cost` |
+| --- | --- | --- |
+| `input_tokens` | `input_tokens` | `input_tokens` |
+| `cached_input_tokens` | `cache_read_input_tokens` | `cache_read_tokens` |
+| `cache_write_input_tokens` | `cache_creation_input_tokens` | `cache_write_tokens` |
+| `output_tokens` | `output_tokens` | `output_tokens` |
+| `reasoning_output_tokens` | — | — |
+
+And the arithmetic differs. Measured over two real runs:
+
+| run | `input_tokens` | `cached` | `cache_write` | cached + write | remainder |
+| --- | --- | --- | --- | --- | --- |
+| A | 24951 | 12409 | 12536 | 24945 | 6 |
+| B | 24916 | 12399 | 12511 | 24910 | 6 |
+
+So `input_tokens` is the **total**, with the cache figures breaking it down —
+unlike Anthropic, which reports cache reads *separately* from `input_tokens`.
+Passing all three straight to `price()` bills roughly 25k tokens two and three
+times over on every trial, which trips a budget cap early and makes every cost
+estimate wrong. The adapter subtracts.
+
+`reasoning_output_tokens` was 0 in both runs, so whether it is additive to
+`output_tokens` or already included is **not** established. It is currently
+ignored; a run that actually uses reasoning tokens would settle it.
+
+### No budget flag
+
+`codex exec` has no `--max-budget-usd` equivalent, so for this agent the
+per-trial cap is enforced by the budget ledger alone. The adapter declares this
+as `enforces_max_usd = False` rather than leaving it implicit — Claude Code sets
+it True, where `--max-budget-usd` gives a second line of defence.
+
+### `codex exec` reads stdin
+
+Stderr shows `Reading additional input from stdin...` on every run. **Stdin must
+be closed** or the process waits. Task 13 owes `stdin_open=False`.
+
+### Event stream
+
+Pure JSONL on stdout; the `ERROR` log lines go to stderr. Flat
+`{"type":"<dotted.name>"}` envelopes, sharing nothing with Claude Code's shape:
+
+```
+thread.started   {"thread_id": ...}
+turn.started
+item.started     {"item": {"id", "type", ...}}
+item.completed   {"item": {"id", "type", ...}}
+turn.completed   {"usage": {...}}
+turn.failed      {"error": {"message"}}
+error            {"message"}
+```
+
+An item is reported **twice**, as `item.started` then `item.completed`, so only
+the completed form is emitted or every command doubles in the trace.
+
+Item payloads, from recordings:
+
+| item type | fields |
+| --- | --- |
+| `agent_message` | `id`, `type`, `text` |
+| `command_execution` | `id`, `type`, `command`, `aggregated_output`, `exit_code`, `status` |
+| `error` | `id`, `type`, `message` |
+
+`file_change`, `mcp_tool_call`, `web_search`, `reasoning`, `patch_apply` and
+`todo_list` appear in the binary's item-type table but have not been seen in a
+recording, so the adapter leaves them unmapped rather than guessing. The raw
+stream is stored beside the trace, so a later recording can map them without
+having lost anything.

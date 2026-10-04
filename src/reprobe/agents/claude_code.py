@@ -41,6 +41,18 @@ class ClaudeCodeAdapter:
     #: anything missing here simply does not exist inside a trial.
     env_allowlist: tuple[str, ...] = ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL")
 
+    #: `--max-budget-usd` caps spend inside the CLI itself, so the ledger has a
+    #: second line of defence rather than being the only one.
+    enforces_max_usd = True
+
+    def login_command(self) -> list[str] | None:
+        """None: the CLI reads ANTHROPIC_API_KEY from the environment directly.
+
+        Codex needs a login step; this one does not, which is why it is part of
+        the adapter protocol rather than the shared harness.
+        """
+        return None
+
     def command(self, spec: AgentSpec, *, task: str, max_usd: float) -> list[str]:
         return [
             "claude",

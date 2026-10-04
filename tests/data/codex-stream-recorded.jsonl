@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"00000000-0000-7000-8000-000000000000"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll read README.md and return its first line."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'cat README.md'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'cat README.md'","aggregated_output":"# Widget\n\nA widget library.\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"# Widget"}}
+{"type":"turn.completed","usage":{"input_tokens":24916,"cached_input_tokens":12399,"cache_write_input_tokens":12511,"output_tokens":53,"reasoning_output_tokens":0}}
