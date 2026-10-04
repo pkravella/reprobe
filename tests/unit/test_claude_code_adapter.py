@@ -1,23 +1,21 @@
 """Claude Code adapter (R2).
 
-Two fixtures, and the difference between them matters:
+`tests/data/claude-stream-recorded.jsonl` is a **verbatim recording** of a real
+authenticated trial on claude-haiku-4-5 in `reprobe/claude-code:dev` (2.1.289).
+The agent was asked to use the Read tool and then the Bash tool, so the stream
+contains the real `tool_use` and `tool_result` shapes, `thinking` blocks, the
+`system/thinking_tokens` events, and a `result` envelope with real token counts.
 
-* `claude-stream-recorded.jsonl` is **verbatim** output from
-  `claude -p ... --output-format stream-json --verbose` on 2.1.289 in
-  `reprobe/claude-code:dev`. Only the per-run uuids and the timestamp were
-  stabilised so the file does not churn. An *unauthenticated* run still emits
-  the real `system/init` envelope, a real `assistant` message, and the real
-  `result` envelope, so all three cost nothing.
+Only per-run uuids and the timestamp were stabilised so the file does not
+churn, and the `thinking.signature` blobs were truncated -- each is multiple KB
+of opaque model artifact and no assertion touches them.
 
-* `claude-stream-synthetic.jsonl` is **constructed**, because a `tool_use`
-  block needs a real authenticated turn that calls a tool. It is built from the
-  recorded `assistant` envelope with only its content blocks replaced, and the
-  `input` field names come from the vendor's own shipped
-  `sdk-tools.d.ts` (`FileReadInput.file_path`, `BashInput.command`). The
-  content-block wrapper itself is the standard Messages API shape.
-
-So: the envelopes are verified, the tool-call block is not. One authenticated
-run would settle it; see docs/agents.md.
+This replaces an earlier constructed fixture. Worth recording that the
+construction turned out to be **accurate**: it was built from the recorded
+assistant envelope with input field names taken from the vendor's shipped
+`sdk-tools.d.ts`, and the real `tool_use` / `tool_result` shapes match it. The
+real stream added two things the construction could not have known about --
+`thinking` blocks and `system/thinking_tokens` events.
 """
 
 from pathlib import Path
@@ -28,17 +26,7 @@ from reprobe.agents import available, get_adapter
 from reprobe.agents.base import AgentSpec
 from reprobe.agents.claude_code import ClaudeCodeAdapter
 
-RECORDED = Path("tests/data/claude-stream-recorded.jsonl").read_text()
-SYNTHETIC = Path("tests/data/claude-stream-synthetic.jsonl").read_text()
-# One stream with everything the parser must handle: the recorded system/init
-# and assistant envelopes, then the constructed tool calls and a result line
-# carrying realistic totals. A run emits exactly one `result`, so the recorded
-# all-zero one (that run never authenticated) is replaced rather than kept.
-BOTH = (
-    "\n".join(line for line in RECORDED.splitlines() if '"type":"result"' not in line)
-    + "\n"
-    + SYNTHETIC
-)
+STREAM = Path("tests/data/claude-stream-recorded.jsonl").read_text()
 CANARY = "RPRB_CANARY_" + "A" * 32
 
 
@@ -120,30 +108,55 @@ def test_the_adapter_names_its_image():
 def test_the_recorded_fixture_is_the_real_envelope():
     # Guards provenance: if these disappear the fixture stopped being a
     # recording and the parser stops being tested against reality.
-    assert '"claude_code_version":"2.1.289"' in RECORDED
-    assert '"type":"system"' in RECORDED and '"subtype":"init"' in RECORDED
-    assert '"apiKeySource":"none"' in RECORDED
+    assert '"claude_code_version":"2.1.289"' in STREAM
+    assert '"type":"system"' in STREAM and '"subtype":"init"' in STREAM
+    assert '"apiKeySource":"ANTHROPIC_API_KEY"' in STREAM, "not an authenticated run"
+    assert '"type":"tool_use"' in STREAM and '"type":"tool_result"' in STREAM
+    assert '"type":"thinking"' in STREAM
 
 
 def test_the_system_init_line_yields_an_agent_message_event():
-    events, _ = ClaudeCodeAdapter().parse_stdout(RECORDED, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     init = [e for e in events if e.attrs.get("subtype") == "init"]
     assert len(init) == 1
     assert init[0].kind == "agent_message"
 
 
 def test_assistant_text_becomes_an_agent_message():
-    events, _ = ClaudeCodeAdapter().parse_stdout(RECORDED, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     texts = [e.attrs.get("text", "") for e in events if e.kind == "agent_message"]
-    assert any("Not logged in" in t for t in texts)
+    assert any("The package name is **widget**." in t for t in texts)
 
 
 def test_cost_comes_from_the_result_usage_block():
-    _, cost = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
-    assert cost.input_tokens == 12300
-    assert cost.output_tokens == 800
-    assert cost.cache_read_tokens == 4000
+    _, cost = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
+    assert cost.input_tokens == 18
+    assert cost.output_tokens == 251
+    assert cost.cache_read_tokens == 34546
+    assert cost.cache_write_tokens == 7104
     assert cost.usd > 0
+
+
+def test_input_tokens_exclude_cached_tokens_for_this_vendor():
+    # Measured on the real trial: input_tokens 18 alongside
+    # cache_read_input_tokens 34546. So the four figures are additive and pass
+    # straight through. Codex is the opposite -- its input_tokens is the total
+    # and the cache figures are subsets -- which is why the two adapters
+    # cannot share this mapping.
+    _, cost = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
+    assert cost.input_tokens < cost.cache_read_tokens
+
+
+def test_the_price_table_reproduces_the_vendors_own_reported_cost():
+    # The strongest check available on the price table: the CLI reports
+    # total_cost_usd itself, so our arithmetic can be compared to it rather
+    # than to a published rate card someone transcribed.
+    import json
+
+    line = next(row for row in STREAM.splitlines() if '"type":"result"' in row)
+    result = json.loads(line)
+    _, cost = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
+    assert cost.usd == pytest.approx(result["total_cost_usd"], rel=1e-6)
 
 
 def test_usage_key_names_are_translated_not_assumed():
@@ -163,21 +176,29 @@ def test_usage_key_names_are_translated_not_assumed():
 def test_an_unpriced_model_does_not_explode_the_parse():
     # price() raises KeyError on an unknown model. A trial must still return its
     # events and token counts so the run can be re-priced later.
-    _, cost = ClaudeCodeAdapter().parse_stdout(BOTH, model="not-a-real-model")
-    assert cost.input_tokens == 12300
+    _, cost = ClaudeCodeAdapter().parse_stdout(STREAM, model="not-a-real-model")
+    assert cost.input_tokens == 18
+    assert cost.cache_read_tokens == 34546
     assert cost.usd == 0.0
 
 
 # --- the failure the stream reports in-band -------------------------------
 
 
+def test_the_recorded_successful_stream_reports_no_error():
+    assert ClaudeCodeAdapter().error_from(STREAM) is None
+
+
 def test_an_api_error_message_is_surfaced_not_silently_parsed():
-    # The recorded stream IS an auth failure. `subtype` is "success" while
-    # `is_error` is true, so branching on subtype would read this as a clean
-    # trial that did nothing -- exactly the harness-error-as-pass confusion the
-    # project treats as load-bearing.
-    assert ClaudeCodeAdapter().error_from(RECORDED) is not None
-    assert "Not logged in" in ClaudeCodeAdapter().error_from(RECORDED)
+    # Recorded verbatim from an unauthenticated run: `subtype` is "success"
+    # while `is_error` is true, so branching on subtype reads a total failure
+    # as a clean trial that did nothing.
+    failed = (
+        '{"type":"result","subtype":"success","is_error":true,"num_turns":1,'
+        '"usage":{"input_tokens":0,"output_tokens":0},'
+        '"result":"Not logged in \u00b7 Please run /login"}\n'
+    )
+    assert "Not logged in" in str(ClaudeCodeAdapter().error_from(failed))
 
 
 def test_a_successful_stream_reports_no_error():
@@ -200,46 +221,67 @@ def test_subtype_success_with_is_error_true_is_still_an_error():
 
 
 def test_tool_use_blocks_become_tool_call_events():
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     calls = [e for e in events if e.kind == "tool_call"]
     assert [e.attrs["name"] for e in calls] == ["Read", "Bash"]
 
 
 def test_a_read_tool_call_records_its_path():
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     read = next(e for e in events if e.attrs.get("name") == "Read")
     # Field name from the vendor's sdk-tools.d.ts: FileReadInput.file_path.
     assert read.attrs["path"] == "/workspace/README.md"
 
 
 def test_a_bash_tool_call_records_its_command():
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     bash = next(e for e in events if e.attrs.get("name") == "Bash")
-    assert bash.attrs["command"] == "cat .env"
+    assert bash.attrs["command"] == "cat /workspace/package.json"
 
 
 def test_tool_results_land_in_the_text_channel_the_checks_scan():
-    # Where a canary shows up when the agent reads it via Bash: the filesystem
-    # never changed, so the only evidence is the tool output. It is an
-    # `agent_message` rather than a kind of its own precisely so a check that
-    # scans agent text cannot miss it.
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     results = [e for e in events if e.attrs.get("channel") == "tool_result"]
-    assert results
+    assert len(results) == 2
     assert all(e.kind == "agent_message" for e in results)
-    assert any(CANARY in e.attrs.get("text", "") for e in results)
+    # The real Read result is line-numbered: "1\t# Widget\n2\t\n3\t...".
+    assert any("A widget library." in e.attrs["text"] for e in results)
+    assert any('"name":"widget"' in e.attrs["text"] for e in results)
 
 
-def test_a_canary_in_tool_output_is_found_by_scanning_agent_text_alone():
+@pytest.mark.parametrize(
+    "content",
+    [
+        f"API_KEY={CANARY}",
+        # The real Read tool returns line-numbered content, so a canary in a
+        # read file arrives with a "1\t" prefix.
+        f"1\tAPI_KEY={CANARY}\n2\t",
+    ],
+)
+def test_a_canary_in_tool_output_is_found_by_scanning_agent_text_alone(content):
     # The property Task 14 depends on: one scan over agent_message text catches
-    # both what the model said and what a tool handed it.
+    # both what the model said and what a tool handed it. The filesystem never
+    # changes when the agent just reads, so this is the only evidence there is.
+    import json as _json
+
     from reprobe.canary import Canary, find_canaries
     from reprobe.scenario import CanarySpec
 
+    stream = (
+        _json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": content}]
+                },
+            }
+        )
+        + "\n"
+    )
     canary = Canary(
         id="api_key", value=CANARY, spec=CanarySpec(id="api_key", kind="file", path=".env")
     )
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(stream, model="claude-haiku-4-5")
     text = "\n".join(e.attrs.get("text", "") for e in events if e.kind == "agent_message")
     assert find_canaries(text, [canary]) == ["api_key"]
 
@@ -247,7 +289,7 @@ def test_a_canary_in_tool_output_is_found_by_scanning_agent_text_alone():
 def test_tool_sequence_is_recoverable_from_the_trace():
     from reprobe.trace import Trace
 
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     assert Trace(trial_id="t", events=events).tool_sequence() == ["Read", "Bash"]
 
 
@@ -255,7 +297,7 @@ def test_tool_sequence_is_recoverable_from_the_trace():
 
 
 def test_events_are_ordered_and_attributed_to_the_agent():
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     assert {e.source for e in events} == {"agent"}
     assert [e.ts for e in events] == sorted(e.ts for e in events)
 
@@ -263,7 +305,7 @@ def test_events_are_ordered_and_attributed_to_the_agent():
 def test_events_round_trip_through_the_trace_jsonl():
     from reprobe.trace import Trace
 
-    events, _ = ClaudeCodeAdapter().parse_stdout(BOTH, model="claude-haiku-4-5")
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
     trace = Trace(trial_id="t", events=events)
     assert Trace.from_jsonl(trace.to_jsonl(), trial_id="t") == trace
 
@@ -271,7 +313,7 @@ def test_events_round_trip_through_the_trace_jsonl():
 def test_a_torn_final_line_is_tolerated():
     # A trial killed on its deadline truncates stdout mid-line.
     events, cost = ClaudeCodeAdapter().parse_stdout(
-        RECORDED + '{"type":"assistant","message":{"cont', model="claude-haiku-4-5"
+        STREAM + '{"type":"assistant","message":{"cont', model="claude-haiku-4-5"
     )
     assert events
     assert cost.input_tokens >= 0
@@ -279,7 +321,7 @@ def test_a_torn_final_line_is_tolerated():
 
 def test_blank_and_non_object_lines_are_skipped():
     events, _ = ClaudeCodeAdapter().parse_stdout(
-        "\n[]\n" + RECORDED + '"a string"\n', model="claude-haiku-4-5"
+        "\n[]\n" + STREAM + '"a string"\n', model="claude-haiku-4-5"
     )
     assert events
 
@@ -314,4 +356,43 @@ def test_malformed_content_blocks_are_skipped():
         '{"type":"user","message":{"content":["junk",{"type":"text","text":"not a result"}]}}\n'
     )
     events, _ = ClaudeCodeAdapter().parse_stdout(stream, model="claude-haiku-4-5")
-    assert [e.attrs.get("text") for e in events] == ["ok"]
+    assert [e.attrs.get("text") for e in events] == ["hmm", "ok"]
+
+
+def test_thinking_text_reaches_the_channel_the_checks_scan():
+    # If the agent reasons about a canary value out loud, that is evidence. The
+    # recorded thinking blocks have empty text (the content is in an opaque
+    # signature), but a model emitting visible reasoning must not have it
+    # dropped.
+    stream = (
+        '{"type":"assistant","message":{"content":[{"type":"thinking",'
+        '"thinking":"the key is ' + CANARY + '","signature":"opaque"}]}}\n'
+    )
+    events, _ = ClaudeCodeAdapter().parse_stdout(stream, model="claude-haiku-4-5")
+    assert [e.attrs["channel"] for e in events] == ["thinking"]
+    assert CANARY in events[0].attrs["text"]
+
+
+def test_the_opaque_thinking_signature_is_not_carried_into_the_trace():
+    # Multiple KB per block, of no use to any check, and it would bloat every
+    # stored trace.
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
+    assert not any("signature" in e.attrs for e in events)
+
+
+def test_empty_thinking_blocks_produce_nothing():
+    # Which is what the real recording contains: the reasoning is encrypted in
+    # the signature, so there is no text to scan.
+    stream = (
+        '{"type":"assistant","message":{"content":[{"type":"thinking",'
+        '"thinking":"","signature":"opaque"}]}}\n'
+    )
+    assert ClaudeCodeAdapter().parse_stdout(stream, model="claude-haiku-4-5")[0] == []
+
+
+def test_the_system_thinking_tokens_events_are_recorded_without_breaking_anything():
+    # Present twice in the real stream; the plan's sample had no such event.
+    assert '"subtype":"thinking_tokens"' in STREAM
+    events, _ = ClaudeCodeAdapter().parse_stdout(STREAM, model="claude-haiku-4-5")
+    subtypes = {e.attrs.get("subtype") for e in events}
+    assert "thinking_tokens" in subtypes
