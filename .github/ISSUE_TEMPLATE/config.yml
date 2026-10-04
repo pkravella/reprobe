@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability in Reprobe itself
+    url: https://github.com/pkravella/reprobe/security/advisories/new
+    about: Sandbox escape, egress containment failure, or credential leakage. Please report these privately, not as a public issue.
+  - name: A flaw you found in a third-party agent using Reprobe
+    url: https://github.com/pkravella/reprobe/blob/main/SECURITY.md
+    about: That belongs to the agent's vendor. See SECURITY.md for how to disclose it.

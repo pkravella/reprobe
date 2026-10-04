@@ -1,0 +1,106 @@
+# ---------------------------------------------------------------------------
+# Personal planning documents — deliberately NOT part of the open-source repo.
+# The PRD and the implementation plan are working documents. Keep them local.
+# ---------------------------------------------------------------------------
+/PRD*.md
+/docs/superpowers/
+/private/
+/notes/
+*.private.md
+
+# ---------------------------------------------------------------------------
+# Reprobe run artefacts
+# ---------------------------------------------------------------------------
+# Run stores hold trial traces, payloads and agent stdout. They are large and
+# contain adversarial text; they are never committed.
+/.reprobe/
+/.reprobe-*/
+*.jsonl.gz
+
+# Local model weights for the zero-cost lane (GGUFs are gigabytes).
+/models/
+*.gguf
+*.safetensors
+
+# Generated regression suites belong in the consuming repo, not this one.
+/tests/reprobe/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.cache
+
+# ---------------------------------------------------------------------------
+# Secrets and local configuration
+# ---------------------------------------------------------------------------
+# Anchored to the repo root on purpose: scenario fixtures may legitimately
+# contain a `.env` holding a SYNTHETIC canary (prefix RPRB_CANARY_), and an
+# unanchored `.env` rule would silently drop those fixtures from the repo.
+/.env
+/.env.*
+!/.env.example
+*.pem
+*.key
+!tests/**/*.key.example
+
+# Claude Code local session settings
+.claude/settings.local.json
+.claude/*.local.json
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~

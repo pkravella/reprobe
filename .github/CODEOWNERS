@@ -1,0 +1,9 @@
+# Default owner for everything in this repository.
+*       @pkravella
+
+# The safety boundary. Changes here need the maintainer regardless.
+/images/            @pkravella
+/src/reprobe/sandbox/   @pkravella
+/src/reprobe/checks.py  @pkravella
+/SECURITY.md        @pkravella
+/.github/           @pkravella

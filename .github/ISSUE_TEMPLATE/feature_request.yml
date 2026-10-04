@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation you are in, not the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Reprobe to do?
+    validations:
+      required: true
+  - type: textarea
+    id: nongoals
+    attributes:
+      label: Have you checked this is not a non-goal?
+      description: |
+        Reprobe deliberately does not do chat-only jailbreak testing, runtime
+        protection, or model testing without an agent. See the README's non-goals.

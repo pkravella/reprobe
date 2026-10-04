@@ -1,0 +1,36 @@
+name: Agent adapter request
+description: Ask for support for another coding agent
+labels: ["adapter"]
+body:
+  - type: input
+    id: agent
+    attributes:
+      label: Which agent
+      placeholder: "Gemini CLI, OpenHands, Aider, ..."
+    validations:
+      required: true
+  - type: input
+    id: headless
+    attributes:
+      label: Its non-interactive invocation
+      description: The command that runs one task without prompting, as its own `--help` prints it.
+      placeholder: "gemini --prompt '...' --output json"
+  - type: dropdown
+    id: output
+    attributes:
+      label: Does it emit machine-readable output?
+      description: Reprobe needs a structured event stream to extract tool calls. Without one, an adapter is limited to syscall-level observation.
+      options:
+        - "Yes — JSON or JSONL event stream"
+        - "Partly — some structured output"
+        - "No — human-readable text only"
+        - "I don't know"
+    validations:
+      required: true
+  - type: checkboxes
+    id: unmodified
+    attributes:
+      label: Confirmation
+      options:
+        - label: This agent can be driven through its published CLI without patching or wrapping it
+          required: true

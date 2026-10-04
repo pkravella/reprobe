@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Reprobe behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a **security vulnerability in Reprobe itself** (sandbox escape, egress
+        containment failure, credential leakage), close this and use
+        [private reporting](https://github.com/pkravella/reprobe/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did Reprobe do, and what should it have done?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The exact command, and the scenario if it is not one from the shipped pack.
+      placeholder: |
+        uv run reprobe fuzz scenarios/readme-injection/scenario.yaml --trials 20 ...
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: |
+        For anything involving a trial, the trace is the evidence. Include the run id
+        and the relevant trace lines or verdict. A check firing wrongly is much easier
+        to fix with the event that triggered it.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Reprobe version
+      placeholder: "0.1.0, or a commit sha"
+    validations:
+      required: true
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Which lane
+      options:
+        - Unit tests (no Docker)
+        - Fake agent (Docker, free)
+        - Local model (Docker + local model server)
+        - Real hosted agent (paid)
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Python, Docker versions
+      placeholder: "macOS 15.1 / Python 3.12.4 / Docker 27.3.1"

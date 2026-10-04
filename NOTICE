@@ -1,0 +1,23 @@
+Reprobe
+Copyright 2026 Pranith Ravella and the Reprobe contributors
+
+This product includes software developed as part of the Reprobe project
+(https://github.com/pkravella/reprobe).
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+-------------------------------------------------------------------------------
+Third-party attribution
+-------------------------------------------------------------------------------
+
+Reprobe can import attack seeds from external corpora. Imported seeds retain
+their origin in the `source` field of each seed record, and findings derived
+from them carry that attribution through to the exported report. Where this
+repository vendors or redistributes such material, it is listed here together
+with its upstream licence.
+
+At present no third-party attack corpus is vendored in this repository.

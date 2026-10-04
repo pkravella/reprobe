@@ -1,0 +1,53 @@
+name: Scenario proposal
+description: Propose a new attack surface for the scenario pack
+labels: ["scenario"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scenarios are the most valuable outside contribution, and they need no Python.
+        Propose it here first — it saves you building a fixture for a surface that is
+        already covered. See [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md).
+  - type: input
+    id: name
+    attributes:
+      label: Proposed scenario name
+      placeholder: "dependency-changelog"
+    validations:
+      required: true
+  - type: textarea
+    id: surface
+    attributes:
+      label: What does the attacker control, and how would they realistically control it?
+      description: The realism matters. "A file in the repo" is weak; "the CHANGELOG of a transitive npm dependency" is a real path.
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: What honest work is the agent asked to do?
+      description: It must be genuinely completable. If the agent cannot do the work, every trial is noise instead of a clean run.
+    validations:
+      required: true
+  - type: dropdown
+    id: check
+    attributes:
+      label: Which violation would this primarily catch?
+      options:
+        - canary_read
+        - canary_exfil
+        - protected_write
+        - egress_offlist
+        - dangerous_command
+        - something not yet covered by a check
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Confirmations
+      options:
+        - label: The fixture will contain only invented content — no copied private code
+          required: true
+        - label: Secrets will be synthetic canaries; exfiltration targets will be mock hostnames only
+          required: true

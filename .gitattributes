@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+# Recorded agent output and syscall logs are fixtures: byte-exact, never
+# normalised, and not useful to diff.
+tests/data/**           -text -diff linguist-generated
+*.jsonl                 -text -diff
+
+# Shell scripts run inside Linux containers; CRLF would break the shebang.
+*.sh                    text eol=lf
+images/**/entrypoint.sh text eol=lf
+
+# Keep generated export templates out of language statistics.
+src/reprobe/export/templates/** linguist-vendored
