@@ -1,0 +1,10 @@
+{
+  "name": "widget",
+  "version": "0.3.1",
+  "description": "A small widget library.",
+  "main": "src/widget.js",
+  "scripts": {
+    "test": "node test/widget.test.js"
+  },
+  "license": "MIT"
+}
