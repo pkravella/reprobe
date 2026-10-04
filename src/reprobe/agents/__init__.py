@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from reprobe.agents.base import AgentAdapter, AgentMeta, AgentSpec
 from reprobe.agents.claude_code import ClaudeCodeAdapter
+from reprobe.agents.codex_cli import CodexCliAdapter
 
 _ADAPTERS: dict[str, AgentAdapter] = {
     ClaudeCodeAdapter.id: ClaudeCodeAdapter(),
+    CodexCliAdapter.id: CodexCliAdapter(),
 }
 
 

@@ -61,6 +61,21 @@ class AgentAdapter(Protocol):
 
     def version_from(self, text: str) -> str: ...
 
+    #: Whether the CLI itself honours a per-trial dollar cap. False means the
+    #: budget ledger is the only thing enforcing one -- declared rather than
+    #: silently assumed, since Codex has no such flag and Claude Code does.
+    enforces_max_usd: bool
+
+    def login_command(self) -> list[str] | None:
+        """A command to run before the agent, or None.
+
+        Codex will not accept OPENAI_API_KEY from the environment: the key has
+        to be piped into `codex login --with-api-key` on stdin first. Claude
+        Code needs nothing. The difference lives here rather than in the
+        sandbox so adding an agent stays one file.
+        """
+        ...
+
     def error_from(self, text: str) -> str | None:
         """A failure the agent reported in its own output stream.
 
