@@ -1,0 +1,309 @@
+14    1791091985.435668 execve("/bin/sh", ["/bin/sh", "/probe/record.sh"], 0xffffd0929f20 /* 7 vars */) = 0
+14    1791091985.436509 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3</etc/ld.so.cache>
+14    1791091985.436949 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+14    1791091985.439117 openat(AT_FDCWD</workspace>, "/probe/record.sh", O_RDONLY) = 3</probe/record.sh>
+15    1791091985.440250 openat(AT_FDCWD</workspace>, "/dev/null", O_RDONLY <unfinished ...>
+14    1791091985.440275 openat(AT_FDCWD</workspace>, "/dev/null", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+15    1791091985.440299 <... openat resumed>) = 0</dev/null<char 1:3>>
+16    1791091985.440318 openat(AT_FDCWD</workspace>, "/dev/null", O_RDONLY <unfinished ...>
+14    1791091985.440359 <... openat resumed>) = 3</dev/null<char 1:3>>
+16    1791091985.440373 <... openat resumed>) = 0</dev/null<char 1:3>>
+15    1791091985.440384 openat(AT_FDCWD</workspace>, "/dev/null", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+16    1791091985.440406 openat(AT_FDCWD</workspace>, "/dev/null", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3</dev/null<char 1:3>>
+15    1791091985.440457 <... openat resumed>) = 3</dev/null<char 1:3>>
+17    1791091985.440623 openat(AT_FDCWD</workspace>, "/dev/null", O_RDONLY <unfinished ...>
+18    1791091985.440680 openat(AT_FDCWD</workspace>, "/dev/null", O_RDONLY <unfinished ...>
+17    1791091985.440695 <... openat resumed>) = 0</dev/null<char 1:3>>
+18    1791091985.440718 <... openat resumed>) = 0</dev/null<char 1:3>>
+17    1791091985.440734 openat(AT_FDCWD</workspace>, "/dev/null", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+18    1791091985.440747 openat(AT_FDCWD</workspace>, "/dev/null", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3</dev/null<char 1:3>>
+17    1791091985.440810 <... openat resumed>) = 3</dev/null<char 1:3>>
+19    1791091985.441095 execve("/usr/bin/cat", ["cat", "/etc/hostname"], 0xaaaac1d228e0 /* 7 vars */) = 0
+16    1791091985.441305 execve("/usr/bin/curl", ["curl", "-s", "-m", "2", "http://10.255.255.1:9/"], 0xaaaad83177d8 /* 7 vars */) = 0
+15    1791091985.441487 execve("/usr/bin/curl", ["curl", "-s", "-m", "2", "http://10.255.255.1:9/"], 0xaaaad83177d8 /* 7 vars */ <unfinished ...>
+19    1791091985.441621 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.441649 <... execve resumed>) = 0
+19    1791091985.441656 <... openat resumed>) = 3</etc/ld.so.cache>
+16    1791091985.441743 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.441767 execve("/usr/bin/curl", ["curl", "-s", "-m", "2", "http://10.255.255.1:9/"], 0xaaaad83177d8 /* 7 vars */ <unfinished ...>
+16    1791091985.441779 <... openat resumed>) = 3</etc/ld.so.cache>
+18    1791091985.441899 execve("/usr/bin/curl", ["curl", "-s", "-m", "2", "http://10.255.255.1:9/"], 0xaaaad83177d8 /* 7 vars */ <unfinished ...>
+17    1791091985.441911 <... execve resumed>) = 0
+19    1791091985.441998 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.442013 <... execve resumed>) = 0
+15    1791091985.442020 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3</etc/ld.so.cache>
+19    1791091985.442073 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+16    1791091985.442119 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcurl.so.4", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcurl.so.4.8.0>
+17    1791091985.442251 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3</etc/ld.so.cache>
+18    1791091985.442624 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.442639 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcurl.so.4", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.442727 <... openat resumed>) = 3</etc/ld.so.cache>
+15    1791091985.442747 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libcurl.so.4.8.0>
+17    1791091985.442873 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcurl.so.4", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcurl.so.4.8.0>
+18    1791091985.442951 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcurl.so.4", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcurl.so.4.8.0>
+16    1791091985.443474 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libz.so.1.2.13>
+15    1791091985.443759 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libz.so.1.2.13>
+17    1791091985.443957 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libz.so.1.2.13>
+18    1791091985.444092 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libz.so.1.2.13>
+19    1791091985.444559 openat(AT_FDCWD</workspace>, "/etc/hostname", O_RDONLY) = 3</etc/hostname>
+16    1791091985.444803 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+15    1791091985.445063 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.445084 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+15    1791091985.445135 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+17    1791091985.445254 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+14    1791091985.445663 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=19, si_uid=1001, si_status=0, si_utime=0, si_stime=0} ---
+16    1791091985.445963 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnghttp2.so.14", O_RDONLY|O_CLOEXEC <unfinished ...>
+14    1791091985.445999 openat(AT_FDCWD</workspace>, "/workspace/out.txt", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+18    1791091985.446016 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnghttp2.so.14", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.446033 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libnghttp2.so.14.24.1>
+14    1791091985.446162 <... openat resumed>) = 3</workspace/out.txt>
+18    1791091985.446198 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libnghttp2.so.14.24.1>
+15    1791091985.446332 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnghttp2.so.14", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnghttp2.so.14.24.1>
+17    1791091985.446495 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnghttp2.so.14", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnghttp2.so.14.24.1>
+16    1791091985.447020 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libidn2.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libidn2.so.0.3.8>
+18    1791091985.447096 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libidn2.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libidn2.so.0.3.8>
+20    1791091985.447288 execve("/usr/bin/chmod", ["chmod", "777", "/workspace/out.txt"], 0xaaaac1d228c0 /* 7 vars */ <unfinished ...>
+17    1791091985.447347 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libidn2.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libidn2.so.0.3.8>
+15    1791091985.447391 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libidn2.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+20    1791091985.447460 <... execve resumed>) = 0
+15    1791091985.447479 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libidn2.so.0.3.8>
+20    1791091985.447792 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.447816 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/librtmp.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+20    1791091985.447829 <... openat resumed>) = 3</etc/ld.so.cache>
+16    1791091985.447888 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/librtmp.so.1>
+18    1791091985.447948 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/librtmp.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/librtmp.so.1>
+20    1791091985.448109 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.448197 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/librtmp.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+20    1791091985.448215 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+17    1791091985.448230 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/librtmp.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.448243 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/librtmp.so.1>
+17    1791091985.448257 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/librtmp.so.1>
+16    1791091985.448866 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssh2.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssh2.so.1.0.1>
+18    1791091985.448918 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssh2.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssh2.so.1.0.1>
+15    1791091985.449067 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssh2.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssh2.so.1.0.1>
+17    1791091985.449199 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssh2.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssh2.so.1.0.1>
+16    1791091985.449545 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpsl.so.5", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.449563 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpsl.so.5", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libpsl.so.5.3.4>
+16    1791091985.449620 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libpsl.so.5.3.4>
+15    1791091985.449869 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpsl.so.5", O_RDONLY|O_CLOEXEC <unfinished ...>
+20    1791091985.449926 fchmodat(AT_FDCWD</workspace>, "/workspace/out.txt", 0777 <unfinished ...>
+15    1791091985.449949 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libpsl.so.5.3.4>
+20    1791091985.449960 <... fchmodat resumed>) = 0
+17    1791091985.450006 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpsl.so.5", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libpsl.so.5.3.4>
+14    1791091985.450245 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=20, si_uid=1001, si_status=0, si_utime=0, si_stime=0} ---
+18    1791091985.450343 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssl.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssl.so.3>
+16    1791091985.450486 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssl.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssl.so.3>
+15    1791091985.450646 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssl.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libssl.so.3>
+17    1791091985.450729 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libssl.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+21    1791091985.450748 execve("/usr/bin/mkdir", ["mkdir", "-p", "/home/agent/.claude"], 0xaaaac1d228c0 /* 7 vars */ <unfinished ...>
+17    1791091985.450803 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libssl.so.3>
+21    1791091985.450847 <... execve resumed>) = 0
+21    1791091985.451055 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.451071 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcrypto.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+21    1791091985.451088 <... openat resumed>) = 3</etc/ld.so.cache>
+18    1791091985.451236 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libcrypto.so.3>
+21    1791091985.451519 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libselinux.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libselinux.so.1>
+16    1791091985.451647 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcrypto.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.451711 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcrypto.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.451778 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libcrypto.so.3>
+17    1791091985.451794 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libcrypto.so.3>
+15    1791091985.452032 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcrypto.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcrypto.so.3>
+18    1791091985.452471 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgssapi_krb5.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgssapi_krb5.so.2.2>
+21    1791091985.452659 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+17    1791091985.452859 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgssapi_krb5.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgssapi_krb5.so.2.2>
+16    1791091985.452920 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgssapi_krb5.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgssapi_krb5.so.2.2>
+15    1791091985.453361 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgssapi_krb5.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgssapi_krb5.so.2.2>
+18    1791091985.453505 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libldap-2.5.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+21    1791091985.453559 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpcre2-8.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.453571 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libldap-2.5.so.0.1.8>
+21    1791091985.453593 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2>
+17    1791091985.454091 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libldap-2.5.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.454111 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libldap-2.5.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.454164 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libldap-2.5.so.0.1.8>
+16    1791091985.454178 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libldap-2.5.so.0.1.8>
+15    1791091985.454404 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libldap-2.5.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.454428 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/liblber-2.5.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/liblber-2.5.so.0.1.8>
+15    1791091985.454498 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libldap-2.5.so.0.1.8>
+17    1791091985.455095 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/liblber-2.5.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/liblber-2.5.so.0.1.8>
+16    1791091985.455210 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/liblber-2.5.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.455262 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libzstd.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.455284 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/liblber-2.5.so.0.1.8>
+18    1791091985.455314 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libzstd.so.1.5.4>
+15    1791091985.455576 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/liblber-2.5.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/liblber-2.5.so.0.1.8>
+21    1791091985.455656 openat(AT_FDCWD</workspace>, "/proc/filesystems", O_RDONLY|O_CLOEXEC) = 3</proc/filesystems>
+17    1791091985.456010 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libzstd.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libzstd.so.1.5.4>
+18    1791091985.456188 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlidec.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.456213 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libzstd.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libzstd.so.1.5.4>
+18    1791091985.456274 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libbrotlidec.so.1.0.9>
+15    1791091985.456475 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libzstd.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libzstd.so.1.5.4>
+17    1791091985.456888 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlidec.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libbrotlidec.so.1.0.9>
+14    1791091985.456999 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=21, si_uid=1001, si_status=0, si_utime=0, si_stime=0} ---
+18    1791091985.457012 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libunistring.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libunistring.so.2.2.0>
+16    1791091985.457112 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlidec.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libbrotlidec.so.1.0.9>
+14    1791091985.457195 openat(AT_FDCWD</workspace>, "/home/agent/.claude/settings.json", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3</home/agent/.claude/settings.json>
+15    1791091985.457335 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlidec.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libbrotlidec.so.1.0.9>
+18    1791091985.457893 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgnutls.so.30", O_RDONLY|O_CLOEXEC <unfinished ...>
+14    1791091985.457908 openat(AT_FDCWD</workspace>, "/workspace/CLAUDE.md", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+18    1791091985.457955 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libgnutls.so.30.34.3>
+17    1791091985.457967 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libunistring.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+14    1791091985.457984 <... openat resumed>) = 3</workspace/CLAUDE.md>
+17    1791091985.458031 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libunistring.so.2.2.0>
+16    1791091985.458280 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libunistring.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.458293 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libunistring.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.458366 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libunistring.so.2.2.0>
+15    1791091985.458379 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libunistring.so.2.2.0>
+14    1791091985.458627 openat(AT_FDCWD</workspace>, "/workspace/.mcp.json", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3</workspace/.mcp.json>
+17    1791091985.458953 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgnutls.so.30", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.458977 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libhogweed.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.458990 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libgnutls.so.30.34.3>
+18    1791091985.459013 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libhogweed.so.6.6>
+15    1791091985.459154 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgnutls.so.30", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgnutls.so.30.34.3>
+14    1791091985.459255 openat(AT_FDCWD</workspace>, "/workspace/doomed.txt", O_WRONLY|O_CREAT|O_TRUNC, 0666 <unfinished ...>
+16    1791091985.459271 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgnutls.so.30", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgnutls.so.30.34.3>
+14    1791091985.459347 <... openat resumed>) = 3</workspace/doomed.txt>
+18    1791091985.459848 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnettle.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnettle.so.8.6>
+17    1791091985.459919 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libhogweed.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libhogweed.so.6.6>
+15    1791091985.460342 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libhogweed.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libhogweed.so.6.6>
+16    1791091985.460635 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libhogweed.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+22    1791091985.460684 execve("/usr/bin/rm", ["rm", "-f", "/workspace/doomed.txt"], 0xaaaac1d228c0 /* 7 vars */ <unfinished ...>
+16    1791091985.460708 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libhogweed.so.6.6>
+18    1791091985.460924 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgmp.so.10", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgmp.so.10.4.1>
+17    1791091985.461032 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnettle.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnettle.so.8.6>
+15    1791091985.461481 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnettle.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnettle.so.8.6>
+22    1791091985.461632 <... execve resumed>) = 0
+16    1791091985.461893 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libnettle.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libnettle.so.8.6>
+22    1791091985.462002 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.462020 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+22    1791091985.462079 <... openat resumed>) = 3</etc/ld.so.cache>
+18    1791091985.462095 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libkrb5.so.3.3>
+17    1791091985.462200 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgmp.so.10", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgmp.so.10.4.1>
+22    1791091985.462295 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+15    1791091985.462436 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgmp.so.10", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgmp.so.10.4.1>
+18    1791091985.462826 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libk5crypto.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libk5crypto.so.3.1>
+16    1791091985.462905 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libgmp.so.10", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libgmp.so.10.4.1>
+17    1791091985.463138 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5.so.3.3>
+15    1791091985.463443 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5.so.3.3>
+16    1791091985.463835 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5.so.3.3>
+18    1791091985.463904 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcom_err.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcom_err.so.2.1>
+17    1791091985.464167 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libk5crypto.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libk5crypto.so.3.1>
+22    1791091985.464267 unlinkat(AT_FDCWD</workspace>, "/workspace/doomed.txt", 0) = 0
+15    1791091985.464492 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libk5crypto.so.3", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libk5crypto.so.3.1>
+14    1791091985.464954 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=22, si_uid=1001, si_status=0, si_utime=0, si_stime=0} ---
+16    1791091985.464971 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libk5crypto.so.3", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.464987 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5support.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.465031 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libk5crypto.so.3.1>
+18    1791091985.465048 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libkrb5support.so.0.1>
+14    1791091985.465173 openat(AT_FDCWD</workspace>, "/workspace/from.txt", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3</workspace/from.txt>
+17    1791091985.465440 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcom_err.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcom_err.so.2.1>
+15    1791091985.465902 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcom_err.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcom_err.so.2.1>
+18    1791091985.466025 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libsasl2.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libsasl2.so.2.0.25>
+16    1791091985.466285 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libcom_err.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libcom_err.so.2.1>
+23    1791091985.466404 execve("/usr/bin/mv", ["mv", "/workspace/from.txt", "/workspace/to.txt"], 0xaaaac1d228e0 /* 7 vars */ <unfinished ...>
+17    1791091985.466547 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5support.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5support.so.0.1>
+18    1791091985.466969 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlicommon.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libbrotlicommon.so.1.0.9>
+15    1791091985.467058 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5support.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5support.so.0.1>
+23    1791091985.467296 <... execve resumed>) = 0
+16    1791091985.467500 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkrb5support.so.0", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkrb5support.so.0.1>
+23    1791091985.467579 openat(AT_FDCWD</workspace>, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.467601 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libsasl2.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+23    1791091985.467638 <... openat resumed>) = 3</etc/ld.so.cache>
+17    1791091985.467667 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libsasl2.so.2.0.25>
+18    1791091985.467945 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libp11-kit.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+23    1791091985.467957 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libselinux.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.468006 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libp11-kit.so.0.3.0>
+23    1791091985.468027 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libselinux.so.1>
+15    1791091985.468371 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libsasl2.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libsasl2.so.2.0.25>
+16    1791091985.468797 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libsasl2.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.468845 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlicommon.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.468858 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libsasl2.so.2.0.25>
+17    1791091985.468920 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libbrotlicommon.so.1.0.9>
+23    1791091985.469177 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libacl.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libacl.so.1.1.2301>
+18    1791091985.469267 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libtasn1.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libtasn1.so.6.6.3>
+15    1791091985.469887 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlicommon.so.1", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.469946 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libp11-kit.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.469961 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libbrotlicommon.so.1.0.9>
+17    1791091985.470012 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libp11-kit.so.0.3.0>
+16    1791091985.470025 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libbrotlicommon.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libbrotlicommon.so.1.0.9>
+18    1791091985.470286 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkeyutils.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkeyutils.so.1.10>
+23    1791091985.470700 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libattr.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libattr.so.1.1.2501>
+17    1791091985.471041 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libtasn1.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libtasn1.so.6.6.3>
+16    1791091985.471122 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libp11-kit.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.471178 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libp11-kit.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.471197 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libp11-kit.so.0.3.0>
+18    1791091985.471221 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libresolv.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.471232 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libp11-kit.so.0.3.0>
+18    1791091985.471283 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libresolv.so.2>
+17    1791091985.471980 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkeyutils.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkeyutils.so.1.10>
+23    1791091985.472212 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libc.so.6>
+18    1791091985.472269 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libffi.so.8", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.472286 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libtasn1.so.6", O_RDONLY|O_CLOEXEC <unfinished ...>
+18    1791091985.472306 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libffi.so.8.1.2>
+16    1791091985.472381 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libtasn1.so.6.6.3>
+15    1791091985.472403 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libtasn1.so.6", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libtasn1.so.6.6.3>
+17    1791091985.473038 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libresolv.so.2", O_RDONLY|O_CLOEXEC <unfinished ...>
+23    1791091985.473056 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libpcre2-8.so.0", O_RDONLY|O_CLOEXEC <unfinished ...>
+17    1791091985.473076 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libresolv.so.2>
+23    1791091985.473121 <... openat resumed>) = 3</usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2>
+16    1791091985.473480 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkeyutils.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkeyutils.so.1.10>
+15    1791091985.473563 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libkeyutils.so.1", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libkeyutils.so.1.10>
+17    1791091985.474307 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libffi.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libffi.so.8.1.2>
+16    1791091985.474664 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libresolv.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libresolv.so.2>
+15    1791091985.474843 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libresolv.so.2", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libresolv.so.2>
+23    1791091985.475563 openat(AT_FDCWD</workspace>, "/proc/filesystems", O_RDONLY|O_CLOEXEC) = 3</proc/filesystems>
+16    1791091985.475887 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libffi.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libffi.so.8.1.2>
+15    1791091985.476170 openat(AT_FDCWD</workspace>, "/lib/aarch64-linux-gnu/libffi.so.8", O_RDONLY|O_CLOEXEC) = 3</usr/lib/aarch64-linux-gnu/libffi.so.8.1.2>
+23    1791091985.476704 renameat2(AT_FDCWD</workspace>, "/workspace/from.txt", AT_FDCWD</workspace>, "/workspace/to.txt", RENAME_NOREPLACE) = 0
+14    1791091985.477831 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=23, si_uid=1001, si_status=0, si_utime=0, si_stime=0} ---
+18    1791091985.483185 openat(AT_FDCWD</workspace>, "/usr/lib/ssl/openssl.cnf", O_RDONLY) = 3</etc/ssl/openssl.cnf>
+18    1791091985.484887 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+18    1791091985.485000 openat(AT_FDCWD</workspace>, "/home/agent/.config/curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+18    1791091985.485393 connect(3<UNIX-STREAM:[38544]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+17    1791091985.485660 openat(AT_FDCWD</workspace>, "/usr/lib/ssl/openssl.cnf", O_RDONLY) = 3</etc/ssl/openssl.cnf>
+18    1791091985.485810 connect(3<UNIX-STREAM:[38545]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+18    1791091985.486235 openat(AT_FDCWD</workspace>, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC) = 3</etc/nsswitch.conf>
+18    1791091985.486678 openat(AT_FDCWD</workspace>, "/etc/passwd", O_RDONLY|O_CLOEXEC) = 3</etc/passwd>
+18    1791091985.487254 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+17    1791091985.487335 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+17    1791091985.487494 openat(AT_FDCWD</workspace>, "/home/agent/.config/curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+16    1791091985.487683 openat(AT_FDCWD</workspace>, "/usr/lib/ssl/openssl.cnf", O_RDONLY) = 3</etc/ssl/openssl.cnf>
+17    1791091985.487783 connect(3<UNIX-STREAM:[43141]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+17    1791091985.488054 connect(3<UNIX-STREAM:[43142]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+15    1791091985.488302 openat(AT_FDCWD</workspace>, "/usr/lib/ssl/openssl.cnf", O_RDONLY) = 3</etc/ssl/openssl.cnf>
+17    1791091985.488503 openat(AT_FDCWD</workspace>, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC) = 3</etc/nsswitch.conf>
+17    1791091985.489167 openat(AT_FDCWD</workspace>, "/etc/passwd", O_RDONLY|O_CLOEXEC <unfinished ...>
+16    1791091985.489180 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY <unfinished ...>
+17    1791091985.489195 <... openat resumed>) = 3</etc/passwd>
+16    1791091985.489204 <... openat resumed>) = -1 ENOENT (No such file or directory)
+16    1791091985.489258 openat(AT_FDCWD</workspace>, "/home/agent/.config/curlrc", O_RDONLY <unfinished ...>
+18    1791091985.489277 connect(5<TCP:[38548]>, {sa_family=AF_INET, sin_port=htons(9), sin_addr=inet_addr("10.255.255.1")}, 16 <unfinished ...>
+16    1791091985.489928 <... openat resumed>) = -1 ENOENT (No such file or directory)
+18    1791091985.490036 <... connect resumed>) = -1 EINPROGRESS (Operation now in progress)
+16    1791091985.490453 connect(3<UNIX-STREAM:[42398]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110 <unfinished ...>
+17    1791091985.490551 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY <unfinished ...>
+16    1791091985.490564 <... connect resumed>) = -1 ENOENT (No such file or directory)
+17    1791091985.490639 <... openat resumed>) = -1 ENOENT (No such file or directory)
+16    1791091985.490854 connect(3<UNIX-STREAM:[42399]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110 <unfinished ...>
+15    1791091985.490877 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY <unfinished ...>
+16    1791091985.490918 <... connect resumed>) = -1 ENOENT (No such file or directory)
+15    1791091985.490928 <... openat resumed>) = -1 ENOENT (No such file or directory)
+15    1791091985.490981 openat(AT_FDCWD</workspace>, "/home/agent/.config/curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+16    1791091985.491317 openat(AT_FDCWD</workspace>, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC <unfinished ...>
+15    1791091985.491338 connect(3<UNIX-STREAM:[45079]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110 <unfinished ...>
+16    1791091985.491367 <... openat resumed>) = 3</etc/nsswitch.conf>
+15    1791091985.491376 <... connect resumed>) = -1 ENOENT (No such file or directory)
+15    1791091985.491564 connect(3<UNIX-STREAM:[45080]>, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+16    1791091985.491799 openat(AT_FDCWD</workspace>, "/etc/passwd", O_RDONLY|O_CLOEXEC) = 3</etc/passwd>
+15    1791091985.491910 openat(AT_FDCWD</workspace>, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC) = 3</etc/nsswitch.conf>
+16    1791091985.492262 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+17    1791091985.492423 connect(5<TCP:[44213]>, {sa_family=AF_INET, sin_port=htons(9), sin_addr=inet_addr("10.255.255.1")}, 16 <unfinished ...>
+15    1791091985.493064 openat(AT_FDCWD</workspace>, "/etc/passwd", O_RDONLY|O_CLOEXEC) = 3</etc/passwd>
+17    1791091985.493117 <... connect resumed>) = -1 EINPROGRESS (Operation now in progress)
+15    1791091985.493661 openat(AT_FDCWD</workspace>, "/home/agent/.curlrc", O_RDONLY) = -1 ENOENT (No such file or directory)
+16    1791091985.495007 connect(5<TCP:[42402]>, {sa_family=AF_INET, sin_port=htons(9), sin_addr=inet_addr("10.255.255.1")}, 16) = -1 EINPROGRESS (Operation now in progress)
+15    1791091985.496297 connect(5<TCP:[45083]>, {sa_family=AF_INET, sin_port=htons(9), sin_addr=inet_addr("10.255.255.1")}, 16) = -1 EINPROGRESS (Operation now in progress)
+14    1791091987.496576 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=18, si_uid=1001, si_status=28, si_utime=0, si_stime=0} ---
+14    1791091987.500375 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=16, si_uid=1001, si_status=28, si_utime=0, si_stime=0} ---
+14    1791091987.502013 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=17, si_uid=1001, si_status=28, si_utime=0, si_stime=1 /* 0.01 s */} ---
+14    1791092129.064120 execve("/bin/sh", ["/bin/sh", "-c", "/bin/echo caf\303\251\342\200\224dash >/dev/null"], 0xffffd36e9898 /* 7 vars */) = 0
+15    1791092129.070332 execve("/bin/echo", ["/bin/echo", "caf\303\251\342\200\224dash"], 0xaaaae8872918 /* 7 vars */) = 0
+15    1791092129.265839 connect(5<TCPv6:[37654]>, {sa_family=AF_INET6, sin6_port=htons(1), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::1", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
