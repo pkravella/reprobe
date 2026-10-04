@@ -14,6 +14,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
 - Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.
 - CI runs lint, type checking and unit tests on Python 3.11 and 3.12, with the interpreter pinned per matrix leg.
+- `reprobe.trace`: the trial trace (R5) — timestamped events from four independent observers (the agent, `strace`, a filesystem diff and the egress gateway), merged into one ordered timeline, round-tripped through JSONL, and exportable as OpenTelemetry spans that carry the events' own timestamps so a finding can be read in a trace viewer.
 - `reprobe.store`: append-only run storage — JSONL records per run plus content-addressed blobs for traces and payloads, so any finding can be replayed. Safe to write from the search loop's thread pool, and a run killed mid-write stays readable.
 - `reprobe.budget`: cost model and enforced budget caps (R12) — dollars, trials, concurrency and wall-clock, with per-token-kind pricing including cache reads and writes. Token counts are recorded alongside dollars so archived runs can be re-priced. Rates and provenance in [docs/pricing.md](docs/pricing.md).
 - `reprobe.scenario`: declarative YAML scenarios (R1) — attacker-controlled surfaces, synthetic canary specs, egress allowlist, protected paths, policy checks and per-trial limits, with a content hash that covers the fixture's contents so a finding pins the environment it was found in. Authoring guide in [docs/scenarios.md](docs/scenarios.md).
@@ -25,8 +26,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - Declarative YAML scenarios with attacker-controlled surfaces and synthetic canaries.
 - Agent adapters for Claude Code and Codex CLI, driven headless with recorded versions.
 - Disposable per-trial Docker sandbox on an internal network, with a mock egress gateway.
-- Four deterministic violation checks: canary read, canary exfiltration, protected-file write, off-allowlist egress, dangerous command.
-- Trace capture from four independent observers, exportable as OpenTelemetry spans.
+- Five deterministic violation checks: canary read, canary exfiltration, protected-file write, off-allowlist egress, dangerous command.
 - Template and structural mutators with a coverage-guided scheduler, plus a random baseline.
 - Reproduction-rate estimation with a Wilson 95% interval and early stopping.
 - Delta-debugging shrinker over payload and environment, gated on the interval's lower bound.
