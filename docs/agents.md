@@ -212,43 +212,88 @@ exists. `max_usd_per_trial` is the cap that is actually enforced, by
 
 ## The `stream-json` shape
 
-### Three of the four record types are free
+### Recorded from a real trial
 
-An **unauthenticated** run still emits the real `system/init` envelope, a real
-`assistant` message, and the real `result` envelope — so the plan's budgeted
-"one real trial" is not needed for any of them:
+`tests/data/claude-stream-recorded.jsonl` is a verbatim recording of an
+authenticated trial on `claude-haiku-4-5`, asked to use the Read tool and then
+the Bash tool. It contains the real `tool_use` and `tool_result` shapes,
+`thinking` blocks, `system/thinking_tokens` events and a `result` envelope with
+real token counts. Only per-run uuids and the timestamp are stabilised, and the
+multi-KB opaque `thinking.signature` blobs are truncated.
+
+Note that three of the four record types cost **nothing** to capture — an
+unauthenticated run still emits the real `system/init`, `assistant` and
+`result` envelopes:
 
 ```bash
 docker run --rm --entrypoint claude reprobe/claude-code:dev \
     -p "hi" --output-format stream-json --verbose
 ```
 
-Recorded verbatim (uuids and the timestamp stabilised, nothing else changed) in
-`tests/data/claude-stream-recorded.jsonl`.
+Only `tool_use` / `tool_result` need a real turn. An earlier fixture
+constructed those from the recorded envelope plus the vendor's shipped
+`sdk-tools.d.ts`, and the real recording confirmed that construction was
+**accurate** — the shapes matched. It could not have predicted `thinking`
+blocks or `system/thinking_tokens` events, which is why the recording replaced
+it.
 
-### What is still unverified
+Verified block shapes:
 
-A `tool_use` block, and the `user` message carrying a `tool_result`, need a
-real authenticated turn that calls a tool. `tests/data/claude-stream-synthetic.jsonl`
-is **constructed**, and the test module says so. It is built from the recorded
-`assistant` envelope with only its content blocks replaced, and the `input`
-field names come from the vendor's own shipped type definitions:
+```json
+{"type":"tool_use","id":"toolu_...","name":"Read",
+ "input":{"file_path":"/workspace/README.md"},"caller":{"type":"direct"}}
 
-```bash
-docker run --rm --entrypoint sh reprobe/claude-code:dev -lc \
-    'cat $(npm root -g)/@anthropic-ai/claude-code/sdk-tools.d.ts'
+{"type":"tool_result","tool_use_id":"toolu_...",
+ "content":"1\t# Widget\n2\t\n3\tA widget library.\n4\t"}
+
+{"type":"thinking","thinking":"","signature":"<multi-KB opaque blob>"}
 ```
 
-| Tool | Input fields (from `sdk-tools.d.ts`) |
+Two things to know. **The Read tool returns line-numbered content** (`1\t`,
+`2\t`, …), so a canary in a read file arrives with a numeric prefix —
+`find_canaries` handles it because it tolerates whitespace splitting, and
+there is a test for exactly that form. And **`thinking.thinking` was empty** in
+the recording, with the reasoning encrypted in the signature; the adapter still
+routes any non-empty thinking text into the channel the checks scan, since a
+model reasoning about a canary out loud is evidence. The signature is dropped.
+
+Tool input field names, confirmed against `sdk-tools.d.ts` and the recording:
+
+| Tool | Input fields |
 | --- | --- |
 | `Read` | `file_path`, `offset?`, `limit?` |
 | `Write` | `file_path`, `content` |
 | `Edit` | `file_path`, `old_string`, `new_string`, `replace_all?` |
 | `Bash` | `command`, `timeout?`, `description?`, `run_in_background?` |
 
-The content-block wrapper itself is the standard Messages API shape. **One
-authenticated trial on the cheapest model would settle it** — a few cents — and
-is the single remaining unverified thing in this adapter.
+### `input_tokens` excludes cached tokens — the opposite of Codex
+
+Real usage from the trial:
+
+```json
+{"input_tokens":18,"cache_creation_input_tokens":7104,
+ "cache_read_input_tokens":34546,"output_tokens":251,
+ "output_tokens_details":{"thinking_tokens":116}}
+```
+
+`input_tokens` is **18** alongside 34546 cached reads, so the four figures are
+**additive** and pass straight through to `price()`. Codex reports the
+opposite — its `input_tokens` is the total with the cache figures as subsets —
+which is why the two adapters cannot share this mapping.
+
+### The price table checks out against the vendor's own number
+
+The CLI reports `total_cost_usd` itself, so the local price table can be
+compared to it rather than to a transcribed rate card. For the trial above:
+
+```
+our price()      $0.0136076
+vendor reported  $0.0136076
+```
+
+Exact to seven decimal places, which validates both the `claude-haiku-4-5`
+rates and the cache-token mapping. There is a regression test asserting the
+two agree.
 
 ### Two traps in the result envelope
 

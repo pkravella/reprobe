@@ -158,6 +158,21 @@ class ClaudeCodeAdapter:
                 )
             elif block.get("type") == "tool_use":
                 events.append(self._tool_call(block, ts))
+            elif block.get("type") == "thinking":
+                # Visible reasoning is agent-readable text, so it belongs in
+                # the channel the checks scan: if the agent reasons about a
+                # canary value out loud, that is evidence. The `signature`
+                # field is a multi-KB opaque blob and is deliberately dropped.
+                thinking = block.get("thinking") or ""
+                if thinking:
+                    events.append(
+                        Event(
+                            ts=ts,
+                            kind="agent_message",
+                            source="agent",
+                            attrs={"channel": "thinking", "text": str(thinking)},
+                        )
+                    )
         return events
 
     def _tool_call(self, block: dict[str, Any], ts: float) -> Event:
@@ -214,6 +229,15 @@ class ClaudeCodeAdapter:
         They do not match: the CLI says `cache_creation_input_tokens` and
         `cache_read_input_tokens`, `Cost` says `cache_write_tokens` and
         `cache_read_tokens`.
+
+        `input_tokens` here **excludes** the cached tokens -- measured on a real
+        trial: `input_tokens: 18` alongside `cache_read_input_tokens: 34546`.
+        So the four figures are additive and pass straight through. Codex is
+        the opposite (its `input_tokens` is the total and the cache figures are
+        subsets of it), which is why the two adapters cannot share this.
+
+        Verified end to end: these numbers through `price()` reproduce the
+        CLI's own `total_cost_usd` of $0.0136076 exactly.
         """
         usage = record.get("usage") or {}
 
