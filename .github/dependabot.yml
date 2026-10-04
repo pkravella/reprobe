@@ -17,23 +17,20 @@ updates:
     labels: ["dependencies"]
     open-pull-requests-limit: 5
 
-  # -------------------------------------------------------------------------
-  # The docker ecosystem stays commented out until images/*/Dockerfile exist
-  # (implementation Task 7). Dependabot reports `dependency_file_not_found`
-  # and fails on every scheduled run otherwise, which trains everyone to
-  # ignore a red mark.
-  # -------------------------------------------------------------------------
-  # Sandbox images. A base-image bump changes the container digest that
-  # findings are pinned to, so these are reviewed rather than auto-merged.
+  # Sandbox images (implementation Task 7 created them). A base-image bump
+  # changes the container digest every exported finding is pinned to (R11), so
+  # it changes what the test suite means -- reviewed, never auto-merged, and
+  # monthly rather than weekly.
   #
-  # - package-ecosystem: docker
-  #   directories:
-  #     - "/images/base"
-  #     - "/images/mockgw"
-  #     - "/images/claude-code"
-  #     - "/images/codex-cli"
-  #   schedule:
-  #     interval: monthly
-  #   commit-message:
-  #     prefix: "chore"
-  #   labels: ["dependencies", "sandbox"]
+  # claude-code and codex-cli are FROM reprobe/base:dev, which is built locally
+  # and has no registry tag to track, so Dependabot has nothing to update in
+  # them. Only the two images with an upstream base are listed.
+  - package-ecosystem: docker
+    directories:
+      - "/images/base"
+      - "/images/mockgw"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+    labels: ["dependencies", "sandbox"]
