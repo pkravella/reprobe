@@ -187,11 +187,17 @@ def test_digest_never_raises_on_json_able_input(value):
 
 
 @given(_json_values, _json_values)
-def test_equal_values_hash_equally_and_unequal_ones_differ(a, b):
-    if a == b and type(a) is type(b):
+def test_digest_is_a_faithful_function_of_canonical_json(a, b):
+    """The real contract, and it is deliberately *not* stated in terms of
+    Python `==`.
+
+    Python equality is not JSON equality: `[False, False] == [False, 0]` is
+    True, because `False == 0`, yet those serialise to `[false,false]` and
+    `[false,0]` and must hash differently -- we want type-distinguishing
+    hashes, as `test_canonical_json_distinguishes_types` asserts. So the
+    property is that `digest` agrees exactly with `canonical_json`.
+    """
+    if canonical_json(a) == canonical_json(b):
         assert digest(a) == digest(b)
     else:
-        # Not a strict guarantee for all inputs (JSON collapses some distinctions,
-        # e.g. tuples and lists), but it must hold for anything JSON can tell apart.
-        if canonical_json(a) != canonical_json(b):
-            assert digest(a) != digest(b)
+        assert digest(a) != digest(b)
