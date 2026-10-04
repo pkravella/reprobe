@@ -6,7 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Pre-implementation. The repository currently contains project scaffolding, licence and contribution guidance only; no Reprobe code has been written yet.
+Implementation has started. The package installs and the CLI runs, but no command does anything yet.
+
+### Added
+
+- Package skeleton: distribution `reprobe-agents`, import package `reprobe`, console script `reprobe`. The names differ because `reprobe` is taken on PyPI; see [docs/naming.md](docs/naming.md).
+- `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
+- Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.
+- CI runs lint, type checking and unit tests on Python 3.11 and 3.12, with the interpreter pinned per matrix leg.
 
 ### Planned for 0.1.0
 
