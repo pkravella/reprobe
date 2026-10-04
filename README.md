@@ -85,7 +85,11 @@ Reprobe is a layer on top of the ecosystem, not a replacement for it. Credit whe
 
 Several recent papers describe greybox fuzzing of agents guided by tool-call sequences or data flow. None has released code, which is a large part of why this project exists.
 
-> The name "AgentFuzz" was already taken by a [USENIX Security 2025 paper](https://www.usenix.org/conference/usenixsecurity25/presentation/liu-fengyu). "Reprobe" is a working name.
+> **On the name.** "AgentFuzz" was already taken by a [USENIX Security 2025 paper](https://www.usenix.org/conference/usenixsecurity25/presentation/liu-fengyu),
+> and `reprobe` is taken on PyPI by an unrelated activation-steering library. The
+> distribution will therefore be published as **`reprobe-dev`**, while the import
+> package and the CLI stay `reprobe`. "Reprobe" remains a working name pending
+> trademark review — see [docs/naming.md](docs/naming.md).
 
 ## Safety
 
