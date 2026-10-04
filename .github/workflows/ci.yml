@@ -38,7 +38,7 @@ jobs:
             echo "::notice::No pyproject.toml yet; skipping lint, types and tests."
           fi
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
         if: steps.detect.outputs.present == 'true'
         with:
           enable-cache: true
