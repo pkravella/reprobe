@@ -14,6 +14,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
 - Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.
 - CI runs lint, type checking and unit tests on Python 3.11 and 3.12, with the interpreter pinned per matrix leg.
+- `reprobe.ids`: one canonical JSON serialisation and one content-hash algorithm for the whole project, plus `new_id` for identity. Hashes are version-tagged so the scheme can be changed without old and new values silently colliding.
 
 ### Planned for 0.1.0
 
