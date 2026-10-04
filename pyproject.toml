@@ -67,6 +67,21 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 strict = true
 files = ["src"]
 
+# The docker SDK ships no type information and publishes no stub package, so
+# strict mode cannot see through it. Scope the allowance to that import only.
+[[tool.mypy.overrides]]
+module = ["docker.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+# docker_sandbox.py is the one module that cannot be unit-tested: it is a thin
+# orchestration layer over a live Docker daemon, exercised entirely by the
+# docker-marked integration suite (which CI runs as a required job). Its pure
+# helper, compose_command, IS unit-tested. Omitting it keeps the unit-coverage
+# floor meaningful for code that unit tests can actually reach, instead of
+# dragging the number down with lines only a daemon can run.
+omit = ["*/reprobe/sandbox/docker_sandbox.py"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
