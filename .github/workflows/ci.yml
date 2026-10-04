@@ -23,7 +23,7 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The repository is pre-implementation: there is no pyproject.toml yet.
       # Rather than a red X on every commit until Task 1 lands, the Python
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Reprobe ships a corpus of adversarial payloads. The project's own rule
       # is that nothing in it may contain a real credential or target a real
