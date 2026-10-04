@@ -7,7 +7,7 @@
 # latent risk, not a break. It is still the wrong runtime to take into a gate
 # that requires zero harness failures over 100 trials. Still Debian 12, so
 # every apt package below is the one the plan intended.
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 # strace: the syscall observer (Task 10). git/curl/jq/python3: what a coding
 # task needs. build-essential: native npm/pip deps. ca-certificates: so TLS to
