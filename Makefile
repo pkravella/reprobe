@@ -2,7 +2,7 @@
 #
 # Versions default to `latest` so a fresh build picks up the current agent CLI.
 # Pin them for a reproducible build: `make images CLAUDE_CODE_VERSION=2.1.289`.
-IMAGES := base claude-code codex-cli mockgw
+IMAGES := base claude-code codex-cli mockgw fakeagent
 CLAUDE_CODE_VERSION ?= latest
 CODEX_VERSION ?= latest
 
@@ -22,6 +22,9 @@ codex-cli: base
 
 mockgw:
 	docker build -t reprobe/mockgw:dev images/mockgw
+
+fakeagent: base
+	docker build -t reprobe/fakeagent:dev images/fakeagent
 
 # The image id every exported finding is pinned to (R11).
 #
