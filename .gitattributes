@@ -5,6 +5,11 @@
 tests/data/**           -text -diff linguist-generated
 *.jsonl                 -text -diff
 
+# Exception: this fixture is hand-authored, not a recording, and it is the
+# input the egress tests assert against -- a reviewer has to be able to read
+# it. Keep -text so bytes are never normalised; restore diffing.
+tests/data/gateway-log.jsonl  -text diff -linguist-generated
+
 # Shell scripts run inside Linux containers; CRLF would break the shebang.
 *.sh                    text eol=lf
 images/**/entrypoint.sh text eol=lf

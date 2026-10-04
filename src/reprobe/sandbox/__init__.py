@@ -39,7 +39,12 @@ class FsDiff(BaseModel):
 
 
 class EgressRecord(BaseModel):
-    """One connection the mock gateway saw (Task 9)."""
+    """One connection the mock gateway saw (Task 9).
+
+    `headers` is carried because a canary can be smuggled in any header, not
+    just a body or a query string. Searching only the body would leave that
+    exfiltration path undetected.
+    """
 
     model_config = {"frozen": True}
 
@@ -48,6 +53,7 @@ class EgressRecord(BaseModel):
     port: int
     method: str | None = None
     path: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
     body_preview: str = ""
     allowed: bool = False
     protocol: str = "http"
