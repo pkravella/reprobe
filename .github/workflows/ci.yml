@@ -22,45 +22,39 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
+    env:
+      # The repo commits `.python-version` (3.11) as the local default, and uv
+      # honours that file for BOTH `sync` and `run` — so without this the 3.12
+      # leg would silently run on 3.11 and test nothing new. `--python` on sync
+      # alone does not hold, because `uv run` re-resolves from the pin file.
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v7
 
-      # The repository is pre-implementation: there is no pyproject.toml yet.
-      # Rather than a red X on every commit until Task 1 lands, the Python
-      # steps activate the moment the project exists.
-      - name: Detect Python project
-        id: detect
-        run: |
-          if [ -f pyproject.toml ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No pyproject.toml yet; skipping lint, types and tests."
-          fi
-
       - uses: astral-sh/setup-uv@v7
-        if: steps.detect.outputs.present == 'true'
         with:
           enable-cache: true
 
       - name: Install
-        if: steps.detect.outputs.present == 'true'
         run: |
           uv python install ${{ matrix.python-version }}
           uv sync --all-extras --dev
 
+      - name: Confirm the interpreter matches the matrix leg
+        run: |
+          actual="$(uv run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          echo "matrix=${{ matrix.python-version }} actual=$actual"
+          [ "$actual" = "${{ matrix.python-version }}" ]
+
       - name: Lint
-        if: steps.detect.outputs.present == 'true'
         run: |
           uv run ruff check .
           uv run ruff format --check .
 
       - name: Types
-        if: steps.detect.outputs.present == 'true'
         run: uv run mypy
 
       - name: Unit tests
-        if: steps.detect.outputs.present == 'true'
         run: uv run pytest tests/unit -v --cov=reprobe --cov-report=term-missing
 
   hygiene:

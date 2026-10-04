@@ -8,25 +8,21 @@ updates:
       prefix: "chore"
     labels: ["dependencies"]
 
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore"
+    labels: ["dependencies"]
+    open-pull-requests-limit: 5
+
   # -------------------------------------------------------------------------
-  # The uv and docker ecosystems are commented out until the manifests they
-  # scan actually exist. Dependabot reports `dependency_file_not_found` and
-  # fails on every scheduled run otherwise, which trains everyone to ignore a
-  # red mark. Re-enable each one in the same commit that creates its manifest:
-  #
-  #   uv     -> when pyproject.toml and uv.lock land (implementation Task 1)
-  #   docker -> when images/*/Dockerfile land (implementation Task 7)
+  # The docker ecosystem stays commented out until images/*/Dockerfile exist
+  # (implementation Task 7). Dependabot reports `dependency_file_not_found`
+  # and fails on every scheduled run otherwise, which trains everyone to
+  # ignore a red mark.
   # -------------------------------------------------------------------------
-  #
-  # - package-ecosystem: uv
-  #   directory: "/"
-  #   schedule:
-  #     interval: weekly
-  #   commit-message:
-  #     prefix: "chore"
-  #   labels: ["dependencies"]
-  #   open-pull-requests-limit: 5
-  #
   # Sandbox images. A base-image bump changes the container digest that
   # findings are pinned to, so these are reviewed rather than auto-merged.
   #
