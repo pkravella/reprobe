@@ -14,6 +14,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
 - Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.
 - CI runs lint, type checking and unit tests on Python 3.11 and 3.12, with the interpreter pinned per matrix leg.
+- `reprobe.budget`: cost model and enforced budget caps (R12) — dollars, trials, concurrency and wall-clock, with per-token-kind pricing including cache reads and writes. Token counts are recorded alongside dollars so archived runs can be re-priced. Rates and provenance in [docs/pricing.md](docs/pricing.md).
 - `reprobe.scenario`: declarative YAML scenarios (R1) — attacker-controlled surfaces, synthetic canary specs, egress allowlist, protected paths, policy checks and per-trial limits, with a content hash that covers the fixture's contents so a finding pins the environment it was found in. Authoring guide in [docs/scenarios.md](docs/scenarios.md).
 - `reprobe.canary`: per-trial synthetic secrets (`RPRB_CANARY_` prefix) and detection that survives line-wrapping, whitespace splitting, URL encoding, and base64 or hex encoding embedded in a larger body.
 - `reprobe.ids`: one canonical JSON serialisation and one content-hash algorithm for the whole project, plus `new_id` for identity. Hashes are version-tagged so the scheme can be changed without old and new values silently colliding.
