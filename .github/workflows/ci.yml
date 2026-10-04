@@ -55,7 +55,46 @@ jobs:
         run: uv run mypy
 
       - name: Unit tests
-        run: uv run pytest tests/unit -v --cov=reprobe --cov-report=term-missing
+        # --cov-fail-under guards against silent coverage rot: the suite sits
+        # at 99% (only cli.py's NotImplementedError stubs are uncovered), and a
+        # whole module losing its tests would blow past this floor. The number
+        # is deliberately below the real figure so a single hard-to-cover line
+        # does not turn into a red build.
+        run: >
+          uv run pytest tests/unit -v
+          --cov=reprobe --cov-report=term-missing --cov-fail-under=95
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    # Image builds pull base images and npm-install an agent CLI, so this is
+    # slower than the unit legs; the budget is generous rather than tight.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras --dev
+
+      # Only the images the integration suite actually uses. codex-cli is left
+      # out because no integration test needs it, which skips a second
+      # agent-CLI npm install. The GitHub ubuntu runner ships Docker, so there
+      # is nothing to set up.
+      - name: Build sandbox images
+        run: make base claude-code mockgw fakeagent
+
+      # The safety-critical half of the project: the images build and run
+      # unprivileged, strace observes real syscalls, the gateway blocks and
+      # logs egress, the internal network isolates a trial, and the fake agent
+      # drives the whole pipeline end to end. The fake agent is what makes this
+      # free -- before it, this job would have cost money or an API key on
+      # every PR, which is why the suite ran only locally until now.
+      - name: Integration tests
+        run: REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v -m docker
 
   hygiene:
     name: hygiene
@@ -102,7 +141,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [check, hygiene]
+    needs: [check, integration, hygiene]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
