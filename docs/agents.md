@@ -22,8 +22,8 @@ Verified 2026-10-04 on Docker 29.7.2, linux/arm64.
 ## Resolving the versions
 
 ```bash
-docker run --rm node:22-slim sh -lc 'npm view @anthropic-ai/claude-code version'   # 2.1.289
-docker run --rm node:22-slim sh -lc 'npm view @openai/codex version'              # 0.160.0
+docker run --rm node:26-slim sh -lc 'npm view @anthropic-ai/claude-code version'   # 2.1.289
+docker run --rm node:26-slim sh -lc 'npm view @openai/codex version'              # 0.160.0
 ```
 
 Both package names in the plan were correct. `@openai/codex` additionally
@@ -31,7 +31,7 @@ publishes per-platform dist-tags (`linux-arm64`, `darwin-x64`, …); installing
 plain `@openai/codex` resolves the right platform build through optional
 dependencies, which is what the image does.
 
-## Why the base image is `node:22-bookworm-slim`
+## Why the base image is a `node:<major>-bookworm-slim`
 
 Claude Code declares `engines: {node: ">=22.0.0"}`. Debian bookworm's own
 `nodejs` package is **18.20.4**, so the plan's `debian:bookworm-slim` base would
@@ -43,7 +43,41 @@ with only an `npm WARN EBADENGINE` warning, and both `claude --help` and a full
 22. This is therefore a latent risk, not an observed break. It is still the
 wrong runtime to carry into the Phase-1 gate, which requires zero harness
 failures across 100 trials — an unsupported engine is an avoidable variable, and
-`node:22-bookworm-slim` is still Debian 12, so every apt package is unchanged.
+a `-bookworm-` tag keeps the image on Debian 12, so every apt package is
+unchanged.
+
+**The major version is not pinned in prose on purpose.** Dependabot bumps the
+`FROM` line monthly, and
+`tests/integration/test_images.py::test_base_image_satisfies_the_agent_cli_declared_node_engine`
+asserts `node >= 22` -- the declared constraint -- rather than an exact
+version, so a major bump does not produce a spurious failure. Two things to
+keep when reviewing such a bump: the tag must stay `-bookworm-`, and the agent
+CLIs must still run on it.
+
+### Verification record
+
+| Base | Verified | Result |
+| --- | --- | --- |
+| `node:22-bookworm-slim` | 2026-10-04 | Node 22.23.3; all images build; both CLIs run |
+| `node:26-bookworm-slim` | 2026-10-04 | Node 26.10.0; see below |
+
+`node:26-bookworm-slim` (Dependabot, merged) was checked before merge rather
+than after:
+
+- Still `Debian GNU/Linux 12 (bookworm)`, so no apt package changed. Node
+  26.10.0, npm 11.19.1.
+- All four images build.
+- `claude-code`: version probe records `2.1.289 (Claude Code)`, `--help` works,
+  and a full `claude -p "hi" --output-format json` run emits the complete
+  result envelope -- the same shape as on Node 22.
+- `codex`: version probe records `codex-cli 0.160.0`, and `codex exec --help`
+  is **byte-identical** to the recording taken on Node 22 and on the host.
+- The full docker integration suite passes (14 tests).
+
+Taking the bump early was deliberate: it changes the container id every
+exported finding is pinned to (R11), and with no findings and no benchmark yet
+recorded, that id is pinned to nothing. The same bump after the Phase-1 gate
+would invalidate the gate's recorded digest and its cost numbers.
 
 ## Pinning for a reproducible build
 

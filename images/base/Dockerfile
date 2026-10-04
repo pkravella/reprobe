@@ -1,12 +1,16 @@
 # The agent-agnostic sandbox base.
 #
-# node:22-bookworm-slim, not debian:bookworm-slim + apt nodejs:
+# A node:<major>-bookworm-slim image, not debian:bookworm-slim + apt nodejs:
 # @anthropic-ai/claude-code 2.1.289 declares `engines: {node: ">=22.0.0"}` and
 # Debian bookworm ships Node 18.20.4. npm installs anyway with only an
 # EBADENGINE warning, and the CLI was measured working on 18 -- so this is a
 # latent risk, not a break. It is still the wrong runtime to take into a gate
-# that requires zero harness failures over 100 trials. Still Debian 12, so
-# every apt package below is the one the plan intended.
+# that requires zero harness failures over 100 trials.
+#
+# The major is whatever Dependabot has bumped the FROM line to; the constraint
+# is `>= 22`, which the integration test asserts rather than pinning an exact
+# version. Stay on a -bookworm- tag: Debian 12 is what every apt package below
+# is resolved against. See docs/agents.md for the verification record.
 FROM node:26-bookworm-slim
 
 # strace: the syscall observer (Task 10). git/curl/jq/python3: what a coding
