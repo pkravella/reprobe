@@ -68,7 +68,9 @@ def test_base_image_has_strace_and_runs_unprivileged():
 
 def test_base_image_satisfies_the_agent_cli_declared_node_engine():
     # @anthropic-ai/claude-code 2.1.289 declares engines node>=22.0.0; Debian
-    # bookworm's own nodejs is 18.20.4, so the base is node:22-bookworm-slim.
+    # bookworm's own nodejs is 18.20.4, so the base is a node:<major>-bookworm-slim
+    # image. This asserts the constraint, not a version, so a Dependabot major
+    # bump does not produce a spurious failure.
     # Measured: Node 18 installs with only an EBADENGINE warning and runs
     # `--help` and `-p --output-format json` indistinguishably, so this is not a
     # break -- it pins a deliberate choice to stay on a supported runtime rather
