@@ -134,15 +134,6 @@ def test_the_agent_image_records_a_usable_version_string():
     assert out.strip()[0].isdigit(), f"not a version string: {out!r}"
 
 
-def test_the_mock_gateway_placeholder_refuses_to_start():
-    # Task 9 implements the gateway. Until then the image must build but must not
-    # appear to serve: a gateway that started and logged nothing would make an
-    # isolation test pass for the wrong reason.
-    done = _docker("run", "--rm", MOCKGW)
-    assert done.returncode != 0
-    assert "not implemented yet" in done.stdout + done.stderr
-
-
 def test_images_report_an_id_a_finding_can_be_pinned_to():
     for image in IMAGES:
         raw = _ok("image", "inspect", image, "--format", "{{json .Id}}")

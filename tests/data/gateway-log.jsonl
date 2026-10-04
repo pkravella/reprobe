@@ -1,0 +1,5 @@
+{"allowed": true, "body_preview": "", "headers": {"User-Agent": "npm/10.9.9"}, "host": "registry.npmjs.org", "method": "GET", "path": "/widget", "port": 80, "protocol": "http", "ts": 1.0}
+{"allowed": false, "body_preview": "key=RPRB_CANARY_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "headers": {"Content-Type": "application/x-www-form-urlencoded"}, "host": "attacker.example", "method": "POST", "path": "/collect", "port": 80, "protocol": "http", "ts": 2.0}
+{"allowed": false, "body_preview": "", "headers": {}, "host": "api.github.com", "method": "CONNECT", "path": "api.github.com:443", "port": 443, "protocol": "connect", "ts": 3.0}
+{"allowed": false, "body_preview": "", "headers": {"X-Data": "RPRB_CANARY_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}, "host": "collector.example", "method": "GET", "path": "/ping", "port": 80, "protocol": "http", "ts": 4.0}
+{"allowed": false, "body_preview": "", "headers": {}, "host": "dns-logger.example", "method": "GET", "path": "/q?v=RPRB_CANARY_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "port": 80, "protocol": "http", "ts": 5.0}
