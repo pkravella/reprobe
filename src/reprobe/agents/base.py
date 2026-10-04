@@ -6,13 +6,16 @@ an agent (R13) by adding one file here plus one Dockerfile; nothing else moves.
 Adapters must never modify the agent. "Test agents as shipped" is PRD goal 4:
 we drive the published CLI with published flags and parse its published output.
 
-The `AgentAdapter` protocol itself lands in Task 11, against recorded output
-from a real CLI. Only the two models the sandbox needs are declared here.
 """
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from pydantic import BaseModel, Field
+
+from reprobe.budget import Cost
+from reprobe.trace import Event
 
 
 class AgentSpec(BaseModel):
@@ -41,3 +44,28 @@ class AgentMeta(BaseModel):
     model_id: str
     prompt_hash: str
     container_digest: str = ""
+
+
+class AgentAdapter(Protocol):
+    """The only place a vendor's CLI flags and output format appear."""
+
+    id: str
+    image: str
+    env_allowlist: tuple[str, ...]
+
+    # `max_usd` rather than `max_turns`: Claude Code has no turn cap, and a
+    # per-trial dollar cap is the one limit every supported agent can express.
+    def command(self, spec: AgentSpec, *, task: str, max_usd: float) -> list[str]: ...
+
+    def parse_stdout(self, text: str, *, model: str = "") -> tuple[list[Event], Cost]: ...
+
+    def version_from(self, text: str) -> str: ...
+
+    def error_from(self, text: str) -> str | None:
+        """A failure the agent reported in its own output stream.
+
+        Separate from `parse_stdout` because it decides whether the trial has a
+        verdict at all: an auth failure or a budget abort is a `HarnessError`,
+        not a clean run with no violations.
+        """
+        ...

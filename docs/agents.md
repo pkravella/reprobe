@@ -166,12 +166,105 @@ Worth noting for Task 11's parser:
   event shapes (assistant messages, `tool_use` blocks) still need an
   authenticated run to record, which is the irreducible spend in Task 11.
 
-## Flags
+## Claude Code flags
 
-See the Phase-1 handoff for the verified Claude Code flag set. The two that bite:
-`--output-format stream-json` **requires** `--verbose`, and `--max-turns` does
-not exist in 2.1.232 or 2.1.289 — use `--max-budget-usd`, which maps onto
-`Limits.max_usd_per_trial`.
+Re-verified against `claude --help` **inside `reprobe/claude-code:dev` on
+2.1.289**, 2026-10-04. Identical to the 2.1.232 findings.
+
+| Flag | Status |
+| --- | --- |
+| `-p, --print` | exists; non-interactive |
+| `--output-format <text\|json\|stream-json>` | exists, only with `--print` |
+| `--verbose` | **required** with `stream-json` |
+| `--model <model>` | exists; alias or full id |
+| `--max-turns` | **DOES NOT EXIST** in 2.1.232 or 2.1.289 |
+| `--max-budget-usd <amount>` | exists; the per-trial cap |
+| `--dangerously-skip-permissions` | exists |
+| `--permission-mode` | exists |
+| `--effort <low..max>` | exists; unused |
+| `--include-partial-messages` | exists; unused |
+
+The `--verbose` requirement is not advisory. Measured:
+
+```
+$ claude -p "x" --output-format stream-json
+Error: When using --print, --output-format=stream-json requires --verbose
+```
+
+Omit it and every trial is a harness failure with empty stdout.
+
+So the verified invocation is:
+
+```
+claude -p "<task>" --output-format stream-json --verbose \
+       --model <model> --max-budget-usd <cap> --dangerously-skip-permissions
+```
+
+### `Limits.max_turns` is advisory for this agent — and says so
+
+Claude Code has no turn cap, so the adapter cannot honour `max_turns`. It is
+**not silently ignored**: the adapter simply never claims to support it, and
+**Task 15's orchestrator must warn when a scenario sets `max_turns` and the
+selected adapter cannot enforce it**. A declared limit that quietly does
+nothing is worse than no limit, because a scenario author believes a bound
+exists. `max_usd_per_trial` is the cap that is actually enforced, by
+`--max-budget-usd` and independently by the budget ledger.
+
+## The `stream-json` shape
+
+### Three of the four record types are free
+
+An **unauthenticated** run still emits the real `system/init` envelope, a real
+`assistant` message, and the real `result` envelope — so the plan's budgeted
+"one real trial" is not needed for any of them:
+
+```bash
+docker run --rm --entrypoint claude reprobe/claude-code:dev \
+    -p "hi" --output-format stream-json --verbose
+```
+
+Recorded verbatim (uuids and the timestamp stabilised, nothing else changed) in
+`tests/data/claude-stream-recorded.jsonl`.
+
+### What is still unverified
+
+A `tool_use` block, and the `user` message carrying a `tool_result`, need a
+real authenticated turn that calls a tool. `tests/data/claude-stream-synthetic.jsonl`
+is **constructed**, and the test module says so. It is built from the recorded
+`assistant` envelope with only its content blocks replaced, and the `input`
+field names come from the vendor's own shipped type definitions:
+
+```bash
+docker run --rm --entrypoint sh reprobe/claude-code:dev -lc \
+    'cat $(npm root -g)/@anthropic-ai/claude-code/sdk-tools.d.ts'
+```
+
+| Tool | Input fields (from `sdk-tools.d.ts`) |
+| --- | --- |
+| `Read` | `file_path`, `offset?`, `limit?` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string`, `replace_all?` |
+| `Bash` | `command`, `timeout?`, `description?`, `run_in_background?` |
+
+The content-block wrapper itself is the standard Messages API shape. **One
+authenticated trial on the cheapest model would settle it** — a few cents — and
+is the single remaining unverified thing in this adapter.
+
+### Two traps in the result envelope
+
+- **`subtype` is `"success"` while `is_error` is `true`.** `subtype` describes
+  the envelope, not the outcome. Branching on it makes a real auth failure
+  report as a clean trial that happened to do nothing, which is exactly the
+  harness-error-as-pass confusion this project treats as load-bearing. Branch
+  on `is_error`, which is what `ClaudeCodeAdapter.error_from` does.
+- **The usage keys do not match `reprobe.budget.Cost`.** The CLI reports
+  `cache_creation_input_tokens` and `cache_read_input_tokens`; `Cost` calls
+  them `cache_write_tokens` and `cache_read_tokens`. The adapter translates.
+  Token counts are kept even when `price()` does not know the model, so an
+  archived run can be re-priced.
+
+`total_cost_usd` is also reported, so a trial can cross-check the local price
+table against the vendor's own number.
 
 Codex CLI flags are **not yet verified**. Task 12 must run `codex --help` and
 `codex exec --help` and record the real output here. The `codex` binary is not
