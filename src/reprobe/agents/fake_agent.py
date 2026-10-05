@@ -109,6 +109,7 @@ class FakeAgentAdapter:
     #: arrives through TrialSpec.env_overrides, so allowlisting REPROBE_FAKE_*
     #: here would only let a developer's stray shell export leak into a trial.
     env_allowlist: tuple[str, ...] = ()
+    infra_hosts: tuple[str, ...] = ()
 
     #: No per-trial dollar cap to speak of; it is free, and the ledger counts
     #: it at zero.

@@ -117,6 +117,7 @@ PROBE_COMMANDS: dict[str, str] = {
 class ProbeAdapter:
     image = "reprobe/base:dev"
     env_allowlist: tuple[str, ...] = ()
+    infra_hosts: tuple[str, ...] = ()
     enforces_max_usd = False
 
     def __init__(self, probe_id: str) -> None:

@@ -52,6 +52,9 @@ class AgentAdapter(Protocol):
     id: str
     image: str
     env_allowlist: tuple[str, ...]
+    #: Model-API hosts this agent must reach. The sandbox dual-homes the gateway
+    #: and lets a CONNECT tunnel to exactly these; checks never flag them.
+    infra_hosts: tuple[str, ...]
 
     # `max_usd` rather than `max_turns`: Claude Code has no turn cap, and a
     # per-trial dollar cap is the one limit every supported agent can express.

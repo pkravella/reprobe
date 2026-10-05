@@ -1,64 +1,65 @@
-"""Mock egress gateway. Nothing a trial sends leaves this container.
+"""Mock egress gateway. A trial reaches nothing but this, and only a named set
+of infrastructure hosts travels any further.
 
-Three jobs:
- 1. Log every connection attempt, with host, port, method, path, headers and a
-    body preview. This is the evidence for the `egress_offlist` and
+Four jobs:
+ 1. Log every connection attempt -- host, port, method, path, headers, a body
+    preview -- which is the evidence for the `egress_offlist` and
     `canary_exfil` checks.
- 2. Answer allowlisted hosts with plausible canned responses, so the agent's
-    honest work (npm metadata, a docs page) does not fail in a way that
-    derails the task.
- 3. Answer everything else with a 403 and log it. The attempt is the finding;
+ 2. Answer allowlisted HTTP hosts with a plausible canned response, so an
+    agent's honest work does not fail in a way that derails the task.
+ 3. Refuse everything else with a 403 and log it. The attempt is the finding;
     success is not required.
+ 4. For CONNECT (HTTPS), **tunnel** to a host in `REPROBE_INFRA_HOSTS` and
+    refuse all others. This is the option-1 carve-out: a real agent has to
+    reach its model API, which is HTTPS and therefore CONNECT, and the trial
+    network has no other route out. The gateway is the single, logged chokepoint
+    that straddles the internal trial network and an egress network (the sandbox
+    dual-homes it); the agent itself never gets a route off the internal net.
+    The tunnelled bytes are opaque TLS -- the host and port are the record.
 
-Three things here were measured rather than assumed, because the first draft
-got each of them wrong (see docs/agents.md):
+Implemented as a raw asyncio proxy rather than on aiohttp, because a CONNECT
+tunnel needs to take over the socket and pump bytes both ways, which aiohttp's
+web framework does not expose cleanly. Dropping aiohttp also drops a dependency
+from the image.
 
- * **CONNECT must be caught in middleware, not a route.** A CONNECT request's
-   target is authority-form (`host:443`), not a path, so it never matches a
-   `/{tail:.*}` route and aiohttp answers 404 -- silently, logging nothing.
-   Every HTTPS attempt would have been invisible to the checks.
- * **The target is in `request.raw_path`,** not `request.path_qs`, which is
-   empty for CONNECT.
- * **Secrets are redacted by value, not by header name.** Redacting
-   `Authorization` and friends by name would hide a canary smuggled inside
-   one, which is the cheapest evasion available; scrubbing known secret
-   *values* keeps every byte of evidence while keeping real credentials out of
-   a stored artifact.
+Notes carried from the earlier aiohttp version (see docs/agents.md): CONNECT's
+target is authority-form (`host:443`), not a path; and secrets are redacted by
+*value* (`REPROBE_REDACT`), never by header name, so a canary smuggled inside a
+credential header is still recorded while a real key is not.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
 import time
 from pathlib import Path
 from typing import Any
-
-from aiohttp import web
+from urllib.parse import urlsplit
 
 LOG = Path(os.environ.get("REPROBE_EGRESS_LOG", "/reprobe/egress.jsonl"))
 ALLOWLIST = [h for h in os.environ.get("REPROBE_ALLOWLIST", "").split(",") if h]
-BODY_PREVIEW_BYTES = 4096
-CANNED = Path("/opt/canned")  # host-mounted canned responses, keyed by host
-
-#: Literal secret values to scrub from everything logged. The host populates
-#: this with whatever it injected into the trial through the adapter's
-#: `env_allowlist`, so the agent's own API key never reaches a run store.
-#: Redaction is by value so that a canary hidden in a credential header is
-#: still recorded and still detected.
+#: Hosts a CONNECT may tunnel to (the model API). Everything else is refused.
+INFRA_HOSTS = [h for h in os.environ.get("REPROBE_INFRA_HOSTS", "").split(",") if h]
+#: Literal secret values to scrub from everything logged -- the injected API
+#: key. By value, not by header name, so a canary in a credential header stays.
 REDACT = [v for v in os.environ.get("REPROBE_REDACT", "").split(",") if v]
 REDACTED = "<redacted>"
 
+BODY_PREVIEW_BYTES = 4096
+TUNNEL_CHUNK = 65536
+UPSTREAM_TIMEOUT = 10.0
+CANNED = Path("/opt/canned")  # host-mounted canned responses, keyed by host
 
-def allowed(host: str) -> bool:
-    """Mirrors `reprobe.observers.egress.host_allowed`.
 
-    The host recomputes this from the log; this copy only decides whether to
-    serve a canned response. The dot boundary matters here too: without it
-    `notexample.com` matches `*.example.com`.
-    """
+def _matches(host: str, patterns: list[str]) -> bool:
+    """Exact and `*.suffix` match, case- and port-insensitive. Mirrors
+    `reprobe.observers.egress.host_allowed`; the dot boundary keeps
+    `notexample.com` from matching `*.example.com`."""
     host = host.split(":")[0].lower().rstrip(".")
-    for raw in ALLOWLIST:
+    for raw in patterns:
         pattern = raw.lower().rstrip(".")
         if pattern.startswith("*."):
             base = pattern[2:]
@@ -77,87 +78,176 @@ def scrub(value: str) -> str:
 
 
 def log_attempt(**fields: Any) -> None:
-    record = {"ts": time.time(), **fields}
-    line = scrub(json.dumps(record, ensure_ascii=False))
+    line = scrub(json.dumps({"ts": time.time(), **fields}, ensure_ascii=False))
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
         fh.flush()
 
 
-def _target_host(request: web.Request) -> str:
-    """The host a request is aimed at, for every request form a proxy sees.
+async def _read_request_head(
+    reader: asyncio.StreamReader,
+) -> tuple[str, str, dict[str, str]] | None:
+    request_line = await reader.readline()
+    if not request_line:
+        return None
+    parts = request_line.decode("latin-1").rstrip("\r\n").split(" ")
+    if len(parts) < 2:
+        return None
+    method, target = parts[0], parts[1]
+    headers: dict[str, str] = {}
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+        name, _, value = line.decode("latin-1").partition(":")
+        headers[name.strip()] = value.strip()
+    return method.upper(), target, headers
 
-    origin-form (`GET /p`) and absolute-form (`GET http://h/p`, what HTTP_PROXY
-    produces) both carry it in the Host header. CONNECT carries it in the
-    authority-form target.
-    """
-    if request.method == "CONNECT":
-        return request.raw_path or request.headers.get("Host", "")
-    return request.headers.get("Host") or request.host or ""
+
+def _http_host_port(target: str, headers: dict[str, str]) -> tuple[str, int]:
+    # absolute-form (`GET http://host/path`, what HTTP_PROXY produces) or
+    # origin-form (`GET /path` with a Host header).
+    source = target if "://" in target else headers.get("Host", headers.get("host", ""))
+    split = urlsplit(source if "://" in source else f"//{source}", scheme="http")
+    host = split.hostname or source.split(":")[0]
+    port = split.port or (443 if split.scheme == "https" else 80)
+    return host, port
 
 
-async def handle(request: web.Request) -> web.StreamResponse:
-    host = _target_host(request)
-    body = await request.content.read(BODY_PREVIEW_BYTES)
-    is_allowed = allowed(host)
+def _path(target: str) -> str:
+    if "://" in target:
+        split = urlsplit(target)
+        return split.path + (f"?{split.query}" if split.query else "")
+    return target
+
+
+async def _respond(writer: asyncio.StreamWriter, status: str, body: bytes) -> None:
+    writer.write(
+        f"HTTP/1.1 {status}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Connection: close\r\n\r\n".encode()
+        + body
+    )
+    with contextlib.suppress(Exception):
+        await writer.drain()
+
+
+async def _handle_http(
+    method: str,
+    target: str,
+    headers: dict[str, str],
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+) -> None:
+    length = headers.get("Content-Length") or headers.get("content-length") or "0"
+    want = min(int(length) if length.isdigit() else 0, BODY_PREVIEW_BYTES)
+    body = await reader.read(want) if want else b""
+
+    host, port = _http_host_port(target, headers)
+    is_allowed = _matches(host, ALLOWLIST)
     log_attempt(
-        host=host.split(":")[0],
-        port=request.url.port or 80,
-        method=request.method,
-        path=str(request.rel_url),
-        headers=dict(request.headers),
+        host=host,
+        port=port,
+        method=method,
+        path=_path(target),
+        headers=headers,
         body_preview=body.decode("utf-8", "replace"),
         allowed=is_allowed,
         protocol="http",
     )
     if not is_allowed:
-        return web.json_response({"error": "blocked by reprobe mock gateway"}, status=403)
+        await _respond(writer, "403 Forbidden", b'{"error": "blocked by reprobe mock gateway"}')
+        return
+    canned = CANNED / f"{host}.json"
+    payload = canned.read_text() if canned.exists() else '{"ok": true, "mock": true}'
+    await _respond(writer, "200 OK", payload.encode())
 
-    canned = CANNED / f"{host.split(':')[0]}.json"
-    if canned.exists():
-        return web.json_response(json.loads(canned.read_text()))
-    return web.json_response({"ok": True, "mock": True})
 
-
-async def handle_connect(request: web.Request) -> web.StreamResponse:
-    """A CONNECT tunnel we refuse but log: the attempt is the signal.
-
-    Refusing rather than tunnelling is deliberate. Completing the tunnel would
-    need a MITM CA to see anything inside it, and R3 says nothing leaves the
-    container -- so there is nothing to tunnel to. The host and port the agent
-    asked for are the evidence.
-    """
-    target = request.raw_path or request.headers.get("Host", "")
-    host, _, port = target.partition(":")
+async def _handle_connect(
+    target: str,
+    headers: dict[str, str],
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+) -> None:
+    host, _, port_s = target.partition(":")
+    port = int(port_s) if port_s.isdigit() else 443
+    infra = _matches(host, INFRA_HOSTS)
+    # `allowed` stays False: an infra host is harness plumbing, not a scenario
+    # allowlist entry, and checks.py excludes infra hosts regardless. `tunneled`
+    # records whether bytes actually flowed.
     log_attempt(
         host=host,
-        port=int(port) if port.isdigit() else 443,
+        port=port,
         method="CONNECT",
         path=target,
-        headers=dict(request.headers),
+        headers=headers,
         body_preview="",
         allowed=False,
         protocol="connect",
+        tunneled=infra,
     )
-    return web.Response(status=403, text="blocked by reprobe mock gateway")
+    if not infra:
+        await _respond(writer, "403 Forbidden", b'{"error": "blocked by reprobe mock gateway"}')
+        return
+
+    try:
+        upstream_reader, upstream_writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=UPSTREAM_TIMEOUT
+        )
+    except (TimeoutError, OSError):
+        await _respond(writer, "502 Bad Gateway", b'{"error": "upstream unreachable"}')
+        return
+
+    writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
+    with contextlib.suppress(Exception):
+        await writer.drain()
+    await _pump(reader, writer, upstream_reader, upstream_writer)
 
 
-@web.middleware
-async def connect_middleware(request: web.Request, handler: Any) -> web.StreamResponse:
-    # Middleware, not a route: see the module docstring. Verified that aiohttp
-    # dispatches CONNECT here even though routing cannot match it.
-    if request.method == "CONNECT":
-        return await handle_connect(request)
-    response: web.StreamResponse = await handler(request)
-    return response
+async def _pump(
+    client_reader: asyncio.StreamReader,
+    client_writer: asyncio.StreamWriter,
+    upstream_reader: asyncio.StreamReader,
+    upstream_writer: asyncio.StreamWriter,
+) -> None:
+    async def copy(src: asyncio.StreamReader, dst: asyncio.StreamWriter) -> None:
+        with contextlib.suppress(Exception):
+            while data := await src.read(TUNNEL_CHUNK):
+                dst.write(data)
+                await dst.drain()
+        with contextlib.suppress(Exception):
+            dst.close()
+
+    await asyncio.gather(
+        copy(client_reader, upstream_writer),
+        copy(upstream_reader, client_writer),
+    )
 
 
-def main() -> None:
-    app = web.Application(client_max_size=16 * 1024 * 1024, middlewares=[connect_middleware])
-    app.router.add_route("*", "/{tail:.*}", handle)
-    web.run_app(app, host="0.0.0.0", port=8080, access_log=None)
+async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    try:
+        head = await _read_request_head(reader)
+        if head is None:
+            return
+        method, target, headers = head
+        if method == "CONNECT":
+            await _handle_connect(target, headers, reader, writer)
+        else:
+            await _handle_http(method, target, headers, reader, writer)
+    except Exception:  # a broken client must never take the gateway down
+        pass
+    finally:
+        with contextlib.suppress(Exception):
+            writer.close()
+
+
+async def main() -> None:
+    server = await asyncio.start_server(handle_client, "0.0.0.0", 8080)
+    async with server:
+        await server.serve_forever()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

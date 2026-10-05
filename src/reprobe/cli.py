@@ -108,7 +108,7 @@ def _run_impl(
             "agent_profile": agent_profile,
         }
     )
-    sandbox = DockerSandbox()
+    sandbox = DockerSandbox(infra_hosts=adapter.infra_hosts)
     ledger = BudgetLedger(BudgetCaps(max_usd=max_usd, max_trials=runs, max_concurrency=1))
 
     violated = harness_failed = 0
@@ -126,6 +126,7 @@ def _run_impl(
                 ledger=ledger,
                 otel_endpoint=otel_endpoint,
                 agent_profile=agent_profile,
+                infra_hosts=adapter.infra_hosts,
             )
         except BudgetExceeded as exc:
             typer.echo(f"budget: {exc}", err=True)

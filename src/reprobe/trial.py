@@ -59,6 +59,7 @@ def run_trial(
     otel_endpoint: str | None = None,
     extra_args: list[str] | None = None,
     agent_profile: str | None = None,
+    infra_hosts: tuple[str, ...] = (),
 ) -> TrialRecord:
     # Before any spend, by design (R12): the ledger decides whether this trial
     # may run at all, and a tripped cap raises BudgetExceeded here.
@@ -89,7 +90,11 @@ def run_trial(
 
     # A harness error means no verdict, not a clean pass. `evaluate` would raise
     # on such a result, so it is never called.
-    verdict = None if not result.ok else evaluate(scenario, result, spec.canaries)
+    verdict = (
+        None
+        if not result.ok
+        else evaluate(scenario, result, spec.canaries, infra_hosts=infra_hosts)
+    )
 
     trace_ref = store.put_blob(result.trace.to_jsonl().encode("utf-8"))
     payload_refs = {sid: store.put_blob(text.encode("utf-8")) for sid, text in payloads.items()}

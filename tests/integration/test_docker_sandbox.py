@@ -126,3 +126,36 @@ def test_the_workspace_is_a_fresh_copy_each_trial(minimal_spec, probes):
     second = sandbox.run(_as(minimal_spec, "probe-write"))
     assert "PROBE.md" in first.fs_diff.created
     assert "PROBE.md" in second.fs_diff.created
+
+
+# --- the egress carve-out (option 1) --------------------------------------
+
+
+def test_with_no_infra_hosts_there_is_no_egress_network(minimal_spec, probes):
+    # The free fake-agent gate: maximum isolation, no second network at all.
+    import docker
+
+    client = docker.from_env()
+    before = {n.name for n in client.networks.list()}
+    DockerSandbox(images={"probe-true": "reprobe/base:dev"}).run(_as(minimal_spec, "probe-true"))
+    after = {n.name for n in client.networks.list()}
+    assert not any("egress" in n for n in after - before)
+
+
+def test_with_infra_hosts_the_agent_still_cannot_reach_the_internet(minimal_spec, probes):
+    # The dual-homing must not weaken the agent's isolation: even with an egress
+    # network present (for the gateway), the agent is on the internal net only,
+    # so a direct dial of a raw IP still fails.
+    sandbox = DockerSandbox(images={"probe-curl": "reprobe/base:dev"}, infra_hosts=("example.com",))
+    result = sandbox.run(_as(minimal_spec, "probe-curl"))
+    assert result.ok, result.harness_error
+    assert "000" in _text(result), f"agent reached the internet: {_text(result)!r}"
+
+
+def test_the_egress_network_is_removed_after_the_trial(minimal_spec, probes):
+    import docker
+
+    client = docker.from_env()
+    spec = _as(minimal_spec, "probe-true")
+    DockerSandbox(images={"probe-true": "reprobe/base:dev"}, infra_hosts=("example.com",)).run(spec)
+    assert not any(spec.trial_id in n.name for n in client.networks.list())
