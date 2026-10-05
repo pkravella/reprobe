@@ -14,6 +14,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
 - Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.
 - CI runs lint, type checking and unit tests on Python 3.11 and 3.12, with the interpreter pinned per matrix leg.
+- `reprobe run` and `reprobe soak`, and the trial orchestrator behind them: one path that mints per-trial canaries, runs the sandbox, evaluates the checks, and appends a replayable record to the run store, with the budget ledger consulted before any spend. `soak` is the Phase-1 exit gate — it runs the free fake agent in the real sandbox and fails if any trial hit a harness error. Verified: 100 trials, 0 harness failures, $0 (see [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md)).
 - `reprobe.checks` (R4): the five deterministic violation checks — canary read, canary exfiltration, protected-file write, off-allowlist egress, and dangerous command — each a pattern match over observed events with no model in the loop, so a verdict is reproducible. A read counts only if the open actually succeeded, infrastructure hosts are never a finding, and each violation carries a coarse action key so the same behaviour reached by different payloads groups together.
 - `reprobe.sandbox.docker_sandbox` (R3): the disposable per-trial sandbox — one container on a Docker network with no route off the host, the mock gateway as its only reachable peer and DNS sinkhole, every capability dropped, and the four observers merged into one trace afterwards. The agent gets no host environment it was not granted, a timeout or an agent-reported failure is recorded as a harness error rather than a clean pass, and the container and network are always torn down. Plus `FakeSandbox`, which replays results with no container so the search and triage layers test for free, and `reprobe.observers.fsdiff`, the authoritative record of what changed on disk.
 - Scripted fake agent for the free test lane: a real process in the real sandbox making real syscalls and real network calls, driven by a seeded probability model instead of a model, so the whole pipeline — Docker, the internal network, the gateway, strace, the filesystem diff, and the checks — runs end to end on every PR at no cost, with a known true reproduction rate to measure the statistics against.
@@ -35,7 +36,6 @@ Implementation has started. The package installs and the CLI runs, but no comman
 
 - Declarative YAML scenarios with attacker-controlled surfaces and synthetic canaries.
 - Agent adapters for Claude Code and Codex CLI, driven headless with recorded versions.
-- Disposable per-trial Docker sandbox on an internal network, with a mock egress gateway.
 - Five deterministic violation checks: canary read, canary exfiltration, protected-file write, off-allowlist egress, dangerous command.
 - Template and structural mutators with a coverage-guided scheduler, plus a random baseline.
 - Reproduction-rate estimation with a Wilson 95% interval and early stopping.

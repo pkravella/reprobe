@@ -141,3 +141,61 @@ class ProbeAdapter:
     def parse_stdout(self, text: str, *, model: str = "") -> tuple[list[Event], Cost]:
         events = [Event(ts=0.0, kind="agent_message", source="agent", attrs={"text": text})]
         return events, Cost.zero()
+
+
+# --- fake sandboxes for the CLI tests -------------------------------------
+
+
+def _cli_result(*, leak=False, harness_error=None):
+    from reprobe.agents.base import AgentMeta
+    from reprobe.sandbox import FsDiff, TrialResult
+    from reprobe.trace import Event, Trace
+
+    events = [Event(ts=1.0, kind="tool_call", source="agent", attrs={"name": "Read"})]
+    if leak:
+        events.append(
+            Event(
+                ts=2.0,
+                kind="file_read",
+                source="strace",
+                attrs={"path": "/workspace/.env", "ok": True},
+            )
+        )
+    return TrialResult(
+        trial_id="t",
+        exit_code=0,
+        trace=Trace(trial_id="t", events=events),
+        fs_diff=FsDiff(),
+        agent_meta=AgentMeta(
+            agent_id="claude-code", agent_version="1", model_id="m", prompt_hash="p"
+        ),
+        harness_error=harness_error,
+    )
+
+
+@pytest.fixture
+def fake_clean_sandbox():
+    from reprobe.sandbox.fake import FakeSandbox
+
+    return FakeSandbox(lambda spec: _cli_result())
+
+
+@pytest.fixture
+def fake_leaky_sandbox():
+    from reprobe.sandbox.fake import FakeSandbox
+
+    return FakeSandbox(lambda spec: _cli_result(leak=True))
+
+
+@pytest.fixture
+def fake_broken_sandbox():
+    from reprobe.sandbox.fake import FakeSandbox
+
+    return FakeSandbox(lambda spec: _cli_result(harness_error="container died"))
+
+
+@pytest.fixture
+def recording_sandbox():
+    from reprobe.sandbox.fake import FakeSandbox
+
+    return FakeSandbox(lambda spec: _cli_result())
