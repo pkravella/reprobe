@@ -1,0 +1,50 @@
+name: soak
+
+# The Phase-1 exit gate on a schedule: prove the harness is reliable over many
+# trials. Free, because it runs the scripted fake agent in the real sandbox --
+# real containers, the internal network, the gateway, strace, the fs diff and
+# all five checks. The only thing it does not exercise is a real model, which
+# is not what a harness-reliability gate is testing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Trials to run
+        default: "100"
+  schedule:
+    - cron: "0 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - run: make base mockgw fakeagent
+
+      - name: soak (free lane, fake agent)
+        run: |
+          uv run reprobe soak tests/data/scenarios/minimal/scenario.yaml \
+            --runs ${{ github.event.inputs.runs || 100 }} \
+            --agent fake-agent --model reprobe-fake --max-usd 0
+
+      # Adapter drift against the live Claude Code CLI is the one thing the free
+      # lane cannot see, so check it with a handful of trials -- only on the
+      # schedule, and only if a key is configured. A paid soak every night would
+      # bill the project forever to re-answer what the free lane already proves.
+      - name: adapter drift check (paid, a few cents)
+        if: ${{ github.event_name == 'schedule' && secrets.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          make claude-code
+          uv run reprobe run tests/data/scenarios/minimal/scenario.yaml \
+            --runs 5 --agent claude-code --model claude-haiku-4-5 --max-usd 2
