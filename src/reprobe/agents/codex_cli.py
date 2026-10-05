@@ -47,6 +47,7 @@ class CodexCliAdapter:
     id = "codex-cli"
     image = "reprobe/codex-cli:dev"
     env_allowlist: tuple[str, ...] = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+    infra_hosts: tuple[str, ...] = ("api.openai.com", "chatgpt.com")
 
     #: `codex exec` has no per-trial dollar cap, so the budget ledger is the
     #: only thing enforcing one. Declared rather than silently assumed.

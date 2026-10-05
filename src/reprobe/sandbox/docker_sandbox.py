@@ -140,6 +140,17 @@ class DockerSandbox:
         network = self._client.networks.create(
             f"reprobe-{spec.trial_id}", driver="bridge", internal=True
         )
+        # The egress carve-out (option 1): only when infra hosts are configured
+        # does a second, non-internal network exist, and ONLY the gateway joins
+        # it. The agent stays on the internal net, so its sole route anywhere is
+        # a CONNECT to the gateway, which tunnels only to the named model-API
+        # hosts. With no infra hosts (the free fake-agent gate) there is no
+        # egress network at all -- the strongest form of the guarantee.
+        egress_net = (
+            self._client.networks.create(f"reprobe-egress-{spec.trial_id}", driver="bridge")
+            if self._infra_hosts
+            else None
+        )
         gateway: Container | None = None
         agent: Container | None = None
         try:
@@ -156,12 +167,16 @@ class DockerSandbox:
                     # in the log is the whole point of canary_exfil.
                     "REPROBE_REDACT": ",".join(self._secrets(adapter)),
                     # Harness plumbing, kept separate from the scenario's
-                    # egress_allowlist. The gateway's CONNECT tunnel for these
-                    # is the deferred follow-up; the var is threaded now.
+                    # egress_allowlist. The gateway tunnels CONNECT to these and
+                    # refuses all other CONNECTs.
                     "REPROBE_INFRA_HOSTS": ",".join(self._infra_hosts),
                 },
                 volumes={str(artefacts): {"bind": "/reprobe", "mode": "rw"}},
             )
+            if egress_net is not None:
+                # Dual-home the gateway: now it can reach the model API while
+                # the agent, on the internal net only, cannot.
+                egress_net.connect(gateway)
             gateway_ip = self._wait_for_gateway(gateway, network.name)
 
             command = compose_command(
@@ -200,8 +215,12 @@ class DockerSandbox:
             for container in (agent, gateway):
                 if container is not None:
                     _reap(container)
-            with contextlib.suppress(DockerException):
-                network.remove()
+            # The egress network holds the gateway until it is reaped, so remove
+            # the networks after the containers.
+            for net in (network, egress_net):
+                if net is not None:
+                    with contextlib.suppress(DockerException):
+                        net.remove()
 
         after = WorkspaceManifest.of(ws)
         fs_diff = before.diff(after)

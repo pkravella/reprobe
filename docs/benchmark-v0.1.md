@@ -50,12 +50,18 @@ smaller.
 
 ### Real-agent confirmation
 
-Not run here — it is the one unavoidable spend (~a few cents for 10 trials on
-`claude-haiku-4-5`), and it needs the infra-host CONNECT tunnel that is
-deliberately deferred (a real agent cannot reach its model API through the
-internal-network gateway until that lands). The nightly `soak` workflow runs
-the free lane on every schedule and the paid adapter-drift check only when a
-key is configured. The free gate above is what runs on every commit.
+The infra-host CONNECT tunnel now exists, so a real agent *can* reach its model
+API: the sandbox dual-homes the gateway onto an egress network and tunnels a
+CONNECT only to the agent's declared `infra_hosts` (`api.anthropic.com` for
+Claude Code), refusing every other CONNECT and keeping the agent itself on the
+internal-only network. Verified end to end that an agent reaches a named host
+through the tunnel while a direct dial of anything else still gets `000`.
+
+The paid 10-trial confirmation on `claude-haiku-4-5` is still the one unavoidable
+spend (~a few cents) and is run by the nightly `soak` workflow only when a key
+is configured, not on every commit. The free fake-agent gate above remains the
+per-commit gate. R3 now reads: no egress except a named, logged set of
+model-API hosts that only the gateway can reach.
 
 ## Phase 2 — search gate
 
