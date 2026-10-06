@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Annotated, NamedTuple
 
 import typer
+from pydantic import ValidationError
 
 from reprobe import __version__
 from reprobe.agents import available, get_adapter
 from reprobe.budget import BudgetCaps, BudgetLedger
+from reprobe.coverage import SIGNAL_GROUPS
 from reprobe.errors import BudgetExceeded, ReprobeError
 from reprobe.sandbox.docker_sandbox import DockerSandbox
 from reprobe.scenario import load_scenario
@@ -252,9 +254,71 @@ def soak(
 
 
 @app.command()
-def fuzz() -> None:
+def fuzz(
+    scenario_path: Annotated[Path, typer.Argument(help="Path to scenario.yaml")],
+    agent: Annotated[str, typer.Option(help=f"One of: {', '.join(available())}")] = "claude-code",
+    model: Annotated[str, typer.Option(help="Model id passed to the agent")] = "claude-haiku-4-5",
+    scheduler: Annotated[str, typer.Option(help="energy | random")] = "energy",
+    trials: Annotated[int, typer.Option(help="Trial cap for this run")] = 100,
+    max_usd: Annotated[float, typer.Option(help="Dollar cap; 0 means it must cost nothing")] = 20.0,
+    concurrency: Annotated[int, typer.Option(help="Trials in flight at once")] = 4,
+    seed: Annotated[int, typer.Option(help="Replays the whole search")] = 0,
+    coverage_groups: Annotated[str, typer.Option(help="Comma-separated signal groups")] = ",".join(
+        SIGNAL_GROUPS
+    ),
+    baseline_mutations: Annotated[
+        int, typer.Option(help="Mutations per candidate for --scheduler random")
+    ] = 1,
+    agent_profile: Annotated[str | None, typer.Option(help="Fake-agent behaviour profile")] = None,
+    otel_endpoint: Annotated[str | None, typer.Option(help="OTLP/HTTP endpoint")] = None,
+    out: Annotated[Path, typer.Option(help="Run store directory")] = Path(".reprobe"),
+) -> None:
     """Search a scenario's attacker-controlled surfaces for violations."""
-    raise NotImplementedError
+    from reprobe.loop import FuzzConfig
+    from reprobe.loop import fuzz as run_fuzz
+
+    try:
+        scenario = load_scenario(scenario_path)
+        adapter = get_adapter(agent)
+        config = FuzzConfig(
+            scenario=scenario,
+            agent_id=agent,
+            model=model,
+            # Validated inside `fuzz`, which names the known values; the
+            # Literal annotation would otherwise turn a typo into a pydantic
+            # traceback instead of a sentence.
+            scheduler=scheduler,  # type: ignore[arg-type]
+            seed=seed,
+            caps=BudgetCaps(max_usd=max_usd, max_trials=trials, max_concurrency=concurrency),
+            coverage_groups=tuple(g.strip() for g in coverage_groups.split(",") if g.strip()),
+            baseline_mutations=baseline_mutations,
+            agent_profile=agent_profile,
+            otel_endpoint=otel_endpoint,
+        )
+        result = run_fuzz(
+            config, sandbox=DockerSandbox(infra_hosts=adapter.infra_hosts), store=RunStore(out)
+        )
+    except (ReprobeError, ValidationError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    except KeyError as exc:
+        typer.echo(f"error: unknown agent {agent!r}; known: {available()}", err=True)
+        raise typer.Exit(2) from exc
+
+    stats = result.scheduler_stats
+    typer.echo(
+        f"\nrun {result.run_id}\n"
+        f"  scheduler         {stats.get('scheduler')}\n"
+        f"  trials            {result.trials}\n"
+        f"  violating trials  {result.violating_trials}\n"
+        f"  candidates        {len(result.violations)}\n"
+        f"  harness failures  {result.harness_failures}\n"
+        f"  corpus            {stats.get('corpus_size')}\n"
+        f"  covered edges     {stats.get('covered_edges')}\n"
+        f"  cost              ${result.cost_usd:.4f}\n"
+        f"  wall              {result.wall_seconds:.0f}s\n\n"
+        f"next: reprobe triage {out} --run {result.run_id}"
+    )
 
 
 @app.command()

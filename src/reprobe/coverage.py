@@ -101,7 +101,12 @@ def resource_class(path: str) -> str:
     return "other"
 
 
-def _check_groups(groups: Sequence[str]) -> set[str]:
+def check_groups(groups: Sequence[str]) -> set[str]:
+    """Public so a caller can reject a bad group list *before* spending.
+
+    The search loop validates its configuration up front: discovering a typo
+    on the first fingerprint means the run has already paid for a trial.
+    """
     unknown = sorted(set(groups) - set(SIGNAL_GROUPS))
     if unknown:
         raise ConfigError(
@@ -112,7 +117,7 @@ def _check_groups(groups: Sequence[str]) -> set[str]:
 
 
 def signals(trace: Trace, *, groups: Sequence[str] = SIGNAL_GROUPS, n_max: int = 3) -> list[str]:
-    wanted = _check_groups(groups)
+    wanted = check_groups(groups)
     if n_max < 1:
         raise ConfigError(f"n_max must be at least 1, got {n_max}")
     out: set[str] = set()

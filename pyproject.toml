@@ -84,6 +84,9 @@ omit = ["*/reprobe/sandbox/docker_sandbox.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# So `tests.support` is importable without making the test directories
+# packages, which would change collection and shadow module names.
+pythonpath = ["."]
 markers = [
     "docker: needs a Docker daemon; skipped unless REPROBE_DOCKER_TESTS=1",
     "agent: spends real agent/API budget; skipped unless REPROBE_AGENT_TESTS=1",
