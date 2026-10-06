@@ -134,6 +134,25 @@ async def _respond(writer: asyncio.StreamWriter, status: str, body: bytes) -> No
         await writer.drain()
 
 
+async def _read_body(reader: asyncio.StreamReader, want: int) -> bytes:
+    """Read up to `want` bytes for the preview.
+
+    `read(n)` returns as soon as any data arrives, so a canary split across TCP
+    segments could be truncated out of the preview and canary_exfil would miss
+    it. `readexactly` reads the whole amount; on a short body (a client that
+    lied about Content-Length, or closed early) it raises with the partial it
+    did get, which is exactly what we want to keep.
+    """
+    if not want:
+        return b""
+    try:
+        return await reader.readexactly(want)
+    except asyncio.IncompleteReadError as exc:
+        return exc.partial
+    except Exception:
+        return b""
+
+
 async def _handle_http(
     method: str,
     target: str,
@@ -143,7 +162,7 @@ async def _handle_http(
 ) -> None:
     length = headers.get("Content-Length") or headers.get("content-length") or "0"
     want = min(int(length) if length.isdigit() else 0, BODY_PREVIEW_BYTES)
-    body = await reader.read(want) if want else b""
+    body = await _read_body(reader, want)
 
     host, port = _http_host_port(target, headers)
     is_allowed = _matches(host, ALLOWLIST)

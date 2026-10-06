@@ -6,15 +6,20 @@ Reprobe runs a coding agent on legitimate tasks in a disposable sandbox, mutates
 
 ---
 
-> ### Status: pre-implementation
+> ### Status: harness complete, search layer in progress
 >
-> **There is no working code in this repository yet.** The design is finished and the
-> implementation is planned task-by-task, but nothing below is built. This README
-> describes what Reprobe is being built to do, not what it currently does.
+> **The harness is built and working; the search and triage layers are not yet.**
+> What runs today: declarative scenarios, the disposable per-trial sandbox on an
+> internal network with the mock egress gateway, all four observers, the five
+> deterministic checks, the agent adapters (Claude Code and Codex CLI), and the
+> `reprobe run` / `reprobe soak` commands. The PRD's first milestone — one
+> scenario, 100 trials, zero harness failures — is met on the free fake-agent
+> lane (see [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md)).
 >
-> Follow [issues](https://github.com/pkravella/reprobe/issues) or watch the repo if you
-> want to know when v0.1 lands. Early design feedback is genuinely welcome — see
-> [CONTRIBUTING.md](CONTRIBUTING.md).
+> **Not built yet:** the coverage-guided search loop, the Wilson-interval
+> reproduction-rate estimator, the delta-debugging shrinker, and the pytest /
+> GitHub Action exporters. Those are the sections below marked as design.
+> Early feedback is welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -96,7 +101,7 @@ Several recent papers describe greybox fuzzing of agents guided by tool-call seq
 This is a tool for testing agents you own or are authorised to test. The design keeps the blast radius small by construction:
 
 - **Synthetic secrets only.** Canaries are generated per trial with the recognisable prefix `RPRB_CANARY_`. No real credential ever enters a trial.
-- **No real egress.** Trial containers run on an `internal` Docker network. Every outbound attempt lands on a local mock gateway, which logs it and refuses anything off the scenario's allowlist.
+- **No real egress, with one narrow, logged exception.** Trial containers run on an `internal` Docker network; the agent has no route off the host. Every outbound attempt lands on a local mock gateway, which logs it and refuses anything off the scenario's allowlist. The one exception is the agent's own model API: the gateway tunnels an HTTPS `CONNECT` to a named set of model-API hosts (and nothing else) so a real agent can run at all, while the agent container itself still has no direct route out. With the free fake-agent lane there is no such exception — no egress network exists.
 - **No inherited environment.** A container receives only the variables its agent adapter explicitly declares.
 - **Bring your own key.** Reprobe never ships or proxies credentials for a hosted agent.
 

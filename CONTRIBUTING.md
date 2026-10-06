@@ -1,6 +1,6 @@
 # Contributing to Reprobe
 
-Thanks for looking. Reprobe is pre-implementation, so right now the three most useful contributions are **design feedback**, **scenarios**, and **agent adapters**.
+Thanks for looking. Reprobe's harness is built (scenarios, sandbox, observers, checks, agent adapters, `reprobe run`/`soak`); the search, triage and export layers are not yet. Right now the most useful contributions are **scenarios**, **agent adapters**, and **design feedback** on the layers still to come.
 
 ## Before you start
 

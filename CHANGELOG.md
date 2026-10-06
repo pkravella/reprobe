@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Implementation has started. The package installs and the CLI runs, but no command does anything yet.
 
+### Fixed
+
+- `reprobe soak` no longer reports `PASSED` when the budget stopped it short of the requested trial count; it reports `SOAK INCOMPLETE` and exits non-zero, and both `run` and `soak` now print the actual number of trials run.
+- The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
+
+### Changed
+
+- Documentation reflects that the harness is built and milestone 1 is met: the README status block, its safety note about the narrowed egress guarantee, and CONTRIBUTING.
+
 ### Added
 
 - Package skeleton: distribution `reprobe-agents`, import package `reprobe`, console script `reprobe`. The names differ because `reprobe` is taken on PyPI; see [docs/naming.md](docs/naming.md).
