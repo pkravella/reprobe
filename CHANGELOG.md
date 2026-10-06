@@ -19,6 +19,7 @@ Implementation has started. The package installs and the CLI runs, but no comman
 
 ### Added
 
+- `reprobe.seeds`: the seed corpus the search starts from — 24 hand-written injection templates across eight families (direct instruction, role play, forged system message, urgency, tool metadata, code comment, hidden markup, multi-step setup), plus a loader that merges your own YAML files with the builtins. A seed names no path and no host: it targets the scenario's synthetic canary through a token, so one seed is portable across scenarios, and a test refuses any seed carrying a credential shape or a host that could resolve — this corpus is published, and a seed that reaches something real would be an attack rather than a test input. Seed ids are provenance and the loader refuses a collision instead of letting the later one win. Catalogue in [docs/seeds.md](docs/seeds.md).
 - Package skeleton: distribution `reprobe-agents`, import package `reprobe`, console script `reprobe`. The names differ because `reprobe` is taken on PyPI; see [docs/naming.md](docs/naming.md).
 - `reprobe` CLI with all five subcommands declared and stubbed (`run`, `fuzz`, `triage`, `export`, `verify`), plus `--version`.
 - Error hierarchy: `ReprobeError` with `ScenarioError`, `HarnessError` and `BudgetExceeded`.

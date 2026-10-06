@@ -5,9 +5,10 @@ from reprobe.errors import (
     HarnessError,
     ReprobeError,
     ScenarioError,
+    SeedError,
 )
 
-SUBCLASSES = [ScenarioError, HarnessError, BudgetExceeded]
+SUBCLASSES = [ScenarioError, HarnessError, BudgetExceeded, SeedError]
 
 
 @pytest.mark.parametrize("error", SUBCLASSES)
@@ -39,3 +40,4 @@ def test_subclasses_are_distinct_so_callers_can_discriminate():
     assert not issubclass(HarnessError, BudgetExceeded)
     assert not issubclass(BudgetExceeded, HarnessError)
     assert not issubclass(ScenarioError, HarnessError)
+    assert not issubclass(SeedError, ScenarioError)
