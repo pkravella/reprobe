@@ -11,6 +11,14 @@ class ScenarioError(ReprobeError):
     """A scenario file is invalid or its fixture is missing."""
 
 
+class SeedError(ReprobeError):
+    """A seed file is invalid, or two seeds claim the same id.
+
+    Seed id is provenance: it rides a candidate's lineage into every finding,
+    so a silent collision would misattribute an exploit to the wrong seed.
+    """
+
+
 class HarnessError(ReprobeError):
     """The harness itself failed: the sandbox, an observer, or an agent adapter.
 
@@ -23,4 +31,4 @@ class BudgetExceeded(ReprobeError):
     """A dollar, trial, or wall-clock cap tripped. The loop stops."""
 
 
-__all__ = ["BudgetExceeded", "HarnessError", "ReprobeError", "ScenarioError"]
+__all__ = ["BudgetExceeded", "HarnessError", "ReprobeError", "ScenarioError", "SeedError"]
