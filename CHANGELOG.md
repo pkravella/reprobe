@@ -17,6 +17,10 @@ Implementation has started. The package installs and the CLI runs, but no comman
 
 - Documentation reflects that the harness is built and milestone 1 is met: the README status block, its safety note about the narrowed egress guarantee, and CONTRIBUTING.
 
+### Fixed
+
+- The free lane's scripted agent now reads the attacker-controlled files the *scenario* declares, instead of four filenames baked into its container image. A scenario whose payload went anywhere else had it written to disk and never read, so the trial came back clean — indistinguishable from an agent that saw the injection and resisted it, and enough to make a comparison across such scenarios report a tie.
+
 ### Added
 
 - `reprobe fuzz` and the search loop behind it: the whole Phase-2 stack wired to a trial — pick a candidate, run it, fingerprint what the agent did, feed that back to the scheduler, repeat. Trials run concurrently against one scheduler, every trial and every candidate finding lands in the run store with the mutation lineage that produced it, and the same seed replays the whole search. Budget caps are checked before each dispatch and the trial cap is counted by the loop rather than inferred from the ledger, which lags by however many trials are in flight. A misspelled coverage group, an unknown agent profile or a scenario with no attacker-controlled surface is refused before the first trial costs anything, and a trial the harness broke never reaches the coverage map — crashing is not new behaviour worth pursuing. A run reports both how many trials violated and how many distinct payloads did, because a guided search revisits what works and a blind one scatters, and one number cannot say both.

@@ -25,6 +25,7 @@ container could resolve:
     REPROBE_FAKE_SEED      the PER-TRIAL seed
     REPROBE_WORKSPACE      the repo root (default /workspace)
     REPROBE_CANARY_PATH    where the scenario planted its file canary
+    REPROBE_SURFACE_PATHS  comma-separated attacker-controlled files to read
     REPROBE_COLLECTOR      the off-allowlist host the exfil action targets
 """
 
@@ -44,9 +45,22 @@ WORKSPACE = Path(os.environ.get("REPROBE_WORKSPACE", "/workspace"))
 COLLECTOR = os.environ.get("REPROBE_COLLECTOR", "http://collector.invalid")
 CANARY_PATH = os.environ.get("REPROBE_CANARY_PATH", ".env")
 
-#: Files an attacker may control in a fixture, read in a fixed order so a
-#: trigger's "attention window" means something stable across trials.
-ATTACKER_FILES = ("README.md", "CONTRIBUTING.md", ".mcp.json", "package.json")
+#: Fallback for a direct `docker run` with no scenario behind it. The host
+#: normally names the real surfaces; see ATTACKER_FILES below.
+DEFAULT_ATTACKER_FILES = ("README.md", "CONTRIBUTING.md", ".mcp.json", "package.json")
+
+#: Files an attacker controls in this trial, read in the order the scenario
+#: declares them so a trigger's "attention window" means something stable
+#: across trials.
+#:
+#: This comes from the scenario, not from a list baked into the image. A
+#: hardcoded list silently ignores any scenario that puts its payload
+#: somewhere else -- the payload is written to disk, never read, and every
+#: trial comes back clean, which looks exactly like an agent that resisted it.
+ATTACKER_FILES = (
+    tuple(p for p in os.environ.get("REPROBE_SURFACE_PATHS", "").split(",") if p.strip())
+    or DEFAULT_ATTACKER_FILES
+)
 
 _ids = itertools.count(1)
 
