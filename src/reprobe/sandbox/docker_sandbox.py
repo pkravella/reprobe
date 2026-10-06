@@ -281,6 +281,7 @@ class DockerSandbox:
             "NO_PROXY": "",
             "REPROBE_STRACE_OUT": _STRACE_PATH,
             "REPROBE_CANARY_PATH": _file_canary_path(spec),
+            "REPROBE_SURFACE_PATHS": _surface_paths(spec),
             "REPROBE_COLLECTOR": "http://collector.invalid",
             "HOME": "/home/agent",
         }
@@ -370,6 +371,21 @@ class DockerSandbox:
             duration_s=time.time() - started,
             harness_error=message,
         )
+
+
+def _surface_paths(spec: TrialSpec) -> str:
+    """Workspace-relative paths of the attacker-controlled files, in order.
+
+    The scenario is the authority on what an attacker controls, so the agent
+    is told rather than left to guess. The free lane's scripted agent used a
+    list of four filenames baked into its image, which meant a scenario whose
+    surface was anywhere else had its payload written to disk and never read:
+    both search arms score zero and a gate over such scenarios reports a tie.
+
+    Only `file` surfaces. The others are not written to the workspace, so
+    naming them would point the agent at a path that does not exist.
+    """
+    return ",".join(s.path for s in spec.scenario.surfaces if s.kind == "file")
 
 
 def _file_canary_path(spec: TrialSpec) -> str:
