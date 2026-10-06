@@ -19,6 +19,16 @@ class SeedError(ReprobeError):
     """
 
 
+class ConfigError(ReprobeError):
+    """A component was handed settings it cannot work with.
+
+    Deliberately general: a coverage map sized so its own indices fall off the
+    end, a signal group that does not exist, a scheduler weight that cannot be
+    normalised. These share a failure mode -- the run continues and quietly
+    measures nothing -- so they share an exception rather than one per module.
+    """
+
+
 class HarnessError(ReprobeError):
     """The harness itself failed: the sandbox, an observer, or an agent adapter.
 
@@ -31,4 +41,11 @@ class BudgetExceeded(ReprobeError):
     """A dollar, trial, or wall-clock cap tripped. The loop stops."""
 
 
-__all__ = ["BudgetExceeded", "HarnessError", "ReprobeError", "ScenarioError", "SeedError"]
+__all__ = [
+    "BudgetExceeded",
+    "ConfigError",
+    "HarnessError",
+    "ReprobeError",
+    "ScenarioError",
+    "SeedError",
+]
