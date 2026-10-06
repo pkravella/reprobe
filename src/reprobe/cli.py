@@ -9,7 +9,7 @@ tests. Each one is implemented by a later task.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 import typer
 
@@ -51,6 +51,14 @@ def main(
     """Reprobe CLI."""
 
 
+class _RunSummary(NamedTuple):
+    run_id: str
+    completed: int
+    violated: int
+    harness_failed: int
+    spent_usd: float
+
+
 def _parse_payloads(pairs: list[str] | None) -> dict[str, str]:
     out: dict[str, str] = {}
     for pair in pairs or []:
@@ -73,7 +81,7 @@ def _run_impl(
     max_usd: float,
     otel_endpoint: str | None,
     agent_profile: str | None,
-) -> tuple[str, int, int, float]:
+) -> _RunSummary:
     """Run `runs` trials of one scenario. Returns (run_id, violations, harness_failures, spent)."""
     scenario = load_scenario(scenario_path)
     adapter = get_adapter(agent)  # raises KeyError with the known ids on a typo
@@ -111,7 +119,7 @@ def _run_impl(
     sandbox = DockerSandbox(infra_hosts=adapter.infra_hosts)
     ledger = BudgetLedger(BudgetCaps(max_usd=max_usd, max_trials=runs, max_concurrency=1))
 
-    violated = harness_failed = 0
+    violated = harness_failed = completed = 0
     for i in range(runs):
         try:
             record = run_trial(
@@ -129,8 +137,9 @@ def _run_impl(
                 infra_hosts=adapter.infra_hosts,
             )
         except BudgetExceeded as exc:
-            typer.echo(f"budget: {exc}", err=True)
+            typer.echo(f"budget: {exc} (ran {completed} of {runs})", err=True)
             break
+        completed += 1
         if record.harness_error:
             harness_failed += 1
             typer.echo(f"[{i + 1}/{runs}] HARNESS {record.harness_error}")
@@ -142,10 +151,10 @@ def _run_impl(
             typer.echo(f"[{i + 1}/{runs}] clean")
 
     typer.echo(
-        f"\nrun {run_id}: {violated} violation(s), {harness_failed} harness failure(s), "
-        f"${ledger.spent_usd:.4f} spent"
+        f"\nrun {run_id}: {completed}/{runs} trials, {violated} violation(s), "
+        f"{harness_failed} harness failure(s), ${ledger.spent_usd:.4f} spent"
     )
-    return run_id, violated, harness_failed, ledger.spent_usd
+    return _RunSummary(run_id, completed, violated, harness_failed, ledger.spent_usd)
 
 
 @app.command()
@@ -171,7 +180,7 @@ def run(
         payloads[surface] = Path(path).read_text()
 
     try:
-        _, _, harness_failed, _ = _run_impl(
+        summary = _run_impl(
             scenario_path,
             agent=agent,
             model=model,
@@ -186,7 +195,7 @@ def run(
     except ReprobeError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
-    raise typer.Exit(1 if harness_failed else 0)
+    raise typer.Exit(1 if summary.harness_failed else 0)
 
 
 @app.command()
@@ -207,7 +216,7 @@ def soak(
     not about whether the agent misbehaved.
     """
     try:
-        _, violated, harness_failed, _ = _run_impl(
+        summary = _run_impl(
             scenario_path,
             agent=agent,
             model=model,
@@ -222,10 +231,24 @@ def soak(
     except ReprobeError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
-    if harness_failed:
-        typer.echo(f"SOAK FAILED: {harness_failed} harness failure(s) in {runs} trials")
+    # The gate requires BOTH zero harness failures AND that every requested
+    # trial actually ran -- a soak cut short by the budget has not proven
+    # anything, so it must not report PASSED.
+    if summary.harness_failed:
+        typer.echo(
+            f"SOAK FAILED: {summary.harness_failed} harness failure(s) "
+            f"in {summary.completed}/{runs} trials"
+        )
         raise typer.Exit(1)
-    typer.echo(f"SOAK PASSED: 0 harness failures in {runs} trials ({violated} violation(s))")
+    if summary.completed < runs:
+        typer.echo(
+            f"SOAK INCOMPLETE: only {summary.completed}/{runs} trials ran "
+            "(budget stopped it); not a pass"
+        )
+        raise typer.Exit(1)
+    typer.echo(
+        f"SOAK PASSED: 0 harness failures in {runs} trials ({summary.violated} violation(s))"
+    )
 
 
 @app.command()

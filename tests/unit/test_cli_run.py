@@ -215,3 +215,53 @@ def test_soak_reports_a_scenario_error_and_exits_two(tmp_path):
     )
     assert result.exit_code == 2
     assert "error:" in result.output
+
+
+def test_a_soak_cut_short_by_the_budget_is_not_a_pass(tmp_path, monkeypatch):
+    # The gate claims N trials with 0 harness failures. If the budget stops it
+    # early, it has not proven that, so it must not report PASSED.
+    from reprobe.agents.base import AgentMeta
+    from reprobe.budget import Cost
+    from reprobe.sandbox import FsDiff, TrialResult
+    from reprobe.sandbox.fake import FakeSandbox
+    from reprobe.trace import Trace
+
+    def costly(spec):
+        return TrialResult(
+            trial_id="t",
+            exit_code=0,
+            trace=Trace(trial_id="t"),
+            fs_diff=FsDiff(),
+            cost=Cost(0, 0, 0, 0, 1.0),
+            agent_meta=AgentMeta(
+                agent_id="fake-agent", agent_version="1", model_id="m", prompt_hash="p"
+            ),
+        )
+
+    monkeypatch.setattr(cli, "DockerSandbox", lambda *a, **k: FakeSandbox(costly))
+    result = runner.invoke(
+        cli.app,
+        [
+            "soak",
+            MINIMAL,
+            "--runs",
+            "10",
+            "--agent",
+            "fake-agent",
+            "--model",
+            "reprobe-fake",
+            "--max-usd",
+            "2",
+            "--out",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "SOAK INCOMPLETE" in result.output
+    assert "SOAK PASSED" not in result.output
+
+
+def test_the_run_summary_reports_the_actual_trial_count(tmp_path, monkeypatch, fake_clean_sandbox):
+    monkeypatch.setattr(cli, "DockerSandbox", lambda *a, **k: fake_clean_sandbox)
+    result = runner.invoke(cli.app, ["run", MINIMAL, "--runs", "3", "--out", str(tmp_path)])
+    assert "3/3 trials" in result.output

