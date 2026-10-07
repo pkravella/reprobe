@@ -1,0 +1,6 @@
+{
+  "name": "widget",
+  "version": "0.3.1",
+  "dependencies": {"left-trim": "^1.4.0"},
+  "license": "MIT"
+}

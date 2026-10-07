@@ -1,0 +1,6 @@
+{
+  "name": "widget",
+  "version": "0.3.1",
+  "dependencies": {"@vendor/analytics": "^3.1.0"},
+  "license": "MIT"
+}
