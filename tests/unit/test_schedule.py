@@ -14,7 +14,14 @@ import pytest
 
 from reprobe.coverage import CoverageMap, fingerprint
 from reprobe.mutate import Candidate, MutationContext
-from reprobe.schedule import SEED_INJECTION_RATE, Corpus, EnergyScheduler, RandomScheduler
+from reprobe.schedule import (
+    RAMP_TRIALS,
+    SEED_INJECTION_RATE,
+    STALL_TRIALS,
+    Corpus,
+    EnergyScheduler,
+    RandomScheduler,
+)
 from reprobe.seeds import builtin_seeds
 from reprobe.trace import Event, Trace
 
@@ -348,3 +355,89 @@ def test_the_gradient_simulation_is_not_trivially_winnable(ctx):
     """
     hits = _search(RandomScheduler(builtin_seeds(), ctx), 150, 0)
     assert 0 < hits < 75, hits
+
+
+# --- exploration when the corpus stops paying for itself -------------------
+
+
+def _stalled(sched, rng, rounds, cov):
+    """Feed the scheduler `rounds` trials that find nothing new and violate nothing."""
+    for _ in range(rounds):
+        cand = sched.next_candidate(rng)
+        sched.observe(cand, cov, sched.coverage_map.update(cov), violated=False)
+
+
+def test_exploration_stays_low_while_the_search_is_making_progress(ctx):
+    """A working search should exploit. Nothing here should change that."""
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    rng = random.Random(0)
+    for i in range(12):
+        cand = sched.next_candidate(rng)
+        cov = _cov(*[f"T{j}" for j in range(i + 1)])  # new coverage every trial
+        sched.observe(cand, cov, sched.coverage_map.update(cov), violated=False)
+    assert sched.seed_rate() == pytest.approx(SEED_INJECTION_RATE)
+
+
+def test_a_violation_counts_as_progress_even_without_new_coverage(ctx):
+    """A search still finding violations is working, saturated map or not.
+
+    Without this the arm that is succeeding would be pushed toward random
+    exactly when it has found the thing it was looking for.
+    """
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    rng = random.Random(0)
+    cov = _cov("Read")
+    sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=False)
+    _stalled(sched, rng, 40, cov)
+    assert sched.seed_rate() > SEED_INJECTION_RATE
+    # One violation, and it is back to exploiting.
+    sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=True)
+    assert sched.seed_rate() == pytest.approx(SEED_INJECTION_RATE)
+
+
+def test_exploration_ramps_up_once_the_corpus_stops_paying(ctx):
+    """The tight-window failure from the Phase-2 gate.
+
+    When no mutation of any corpus parent can reach the target, a guided search
+    at a fixed 15% exploration draws a sixth as many fresh seeds as the blind
+    baseline draws, and loses to it -- scoring an exact 0 against the
+    baseline's 3 to 8. A search with nothing left to climb should explore.
+    """
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    rng = random.Random(0)
+    cov = _cov("Read")
+    sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=False)
+    before = sched.seed_rate()
+    _stalled(sched, rng, STALL_TRIALS + RAMP_TRIALS + 5, cov)
+    assert before == pytest.approx(SEED_INJECTION_RATE)
+    assert sched.seed_rate() == pytest.approx(1.0)
+
+
+def test_the_ramp_is_gradual_not_a_cliff(ctx):
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    rng = random.Random(0)
+    cov = _cov("Read")
+    sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=False)
+    rates = []
+    for _ in range(STALL_TRIALS + RAMP_TRIALS + 2):
+        _stalled(sched, rng, 1, cov)
+        rates.append(sched.seed_rate())
+    assert rates == sorted(rates), "the rate must never fall while the search is stuck"
+    assert SEED_INJECTION_RATE < rates[STALL_TRIALS + RAMP_TRIALS // 2] < 1.0
+
+
+def test_a_stalled_search_degenerates_to_the_baseline_not_worse(ctx):
+    """The guarantee that matters: stuck, it should match random, never lose."""
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    rng = random.Random(0)
+    cov = _cov("Read")
+    sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=False)
+    _stalled(sched, rng, 80, cov)
+    fresh = sum(1 for i in range(200) if len(sched.next_candidate(random.Random(i)).lineage) == 1)
+    assert fresh == 200, "a fully stalled search should be drawing fresh seeds every trial"
+
+
+def test_the_stall_counter_is_reported_for_the_run_record(ctx):
+    sched = EnergyScheduler(builtin_seeds(), ctx)
+    stats = sched.stats()
+    assert "seed_rate" in stats and "trials_since_progress" in stats
