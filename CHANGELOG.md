@@ -17,6 +17,8 @@ Implementation has started. The package installs and the CLI runs, but no comman
 
 ### Changed
 
+- The coverage-guided scheduler now explores more when it stops getting anywhere. While it is finding new behaviour or new violations it spends most of its budget mutating what already worked, as before; once neither has happened for a while it raises the share of fresh seeds, reaching full exploration if the corpus never pays off again. Found by the Phase-2 gate: on scenarios where no mutation could reach the target — the payload's position is fixed by the surface template, so there was nothing to climb — a fixed-rate guided search drew a sixth as many fresh seeds as the blind baseline and lost to it, scoring zero where the baseline scored three to eight. A search with nothing left to climb should explore, and stuck it should match the baseline rather than trail it.
+
 - Documentation reflects that the harness is built and milestone 1 is met: the README status block, its safety note about the narrowed egress guarantee, and CONTRIBUTING.
 
 ### Fixed

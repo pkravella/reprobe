@@ -36,6 +36,22 @@ from reprobe.seeds import Seed
 #: most, and the reason its own novelty-preference test came out at 86 of 200.
 SEED_INJECTION_RATE = 0.15
 
+#: Trials with no progress before exploration starts climbing, and how many
+#: more until it reaches 1.0. "Progress" is new coverage *or* a violation --
+#: a search still finding violations is working whether or not the coverage
+#: map has anything left to give, and pushing it toward random at that moment
+#: would be worst at exactly the point it is succeeding.
+#:
+#: The Phase-2 gate is why this exists. On four scenarios no mutation of any
+#: corpus parent could reach the target -- the payload's position is fixed by
+#: the surface template, so the gradient was unclimbable -- and a guided search
+#: at a fixed 15% drew a sixth as many fresh seeds as the blind baseline and
+#: lost to it, scoring an exact 0 against the baseline's 3 to 8. A search with
+#: nothing left to climb should explore. Stuck, it should match the baseline;
+#: it should never do worse.
+STALL_TRIALS = 10
+RAMP_TRIALS = 20
+
 
 class CorpusEntry(BaseModel):
     model_config = {"frozen": False}
@@ -186,9 +202,22 @@ class EnergyScheduler:
         self._surfaces = _check_surfaces(ctx)
         self.corpus = corpus or Corpus()
         self.coverage_map = CoverageMap(map_size) if map_size else CoverageMap()
+        self._since_progress = 0
+
+    def seed_rate(self) -> float:
+        """Share of trials to spend on a fresh seed, right now.
+
+        Constant while the search is getting somewhere, then a linear ramp to
+        full exploration once the corpus has stopped paying for itself.
+        """
+        over = self._since_progress - STALL_TRIALS
+        if over <= 0:
+            return SEED_INJECTION_RATE
+        climbed = min(1.0, over / RAMP_TRIALS)
+        return SEED_INJECTION_RATE + (1.0 - SEED_INJECTION_RATE) * climbed
 
     def next_candidate(self, rng: random.Random) -> Candidate:
-        if not self.corpus.entries or rng.random() < SEED_INJECTION_RATE:
+        if not self.corpus.entries or rng.random() < self.seed_rate():
             return self._fresh_seed(rng)
         return mutate(self.pick_parent(rng).candidate, self._ctx, rng)
 
@@ -211,12 +240,19 @@ class EnergyScheduler:
         violated: bool,
     ) -> None:
         self.corpus.add(candidate, coverage, novelty, depth=_depth_of(candidate), violated=violated)
+        # Progress is new coverage *or* a violation. A search still finding
+        # violations is working whether or not the coverage map has anything
+        # left to give.
+        progressed = bool(novelty and novelty.is_novel) or violated
+        self._since_progress = 0 if progressed else self._since_progress + 1
 
     def stats(self) -> dict[str, Any]:
         return {
             "scheduler": self.name,
             "corpus_size": len(self.corpus),
             "covered_edges": self.coverage_map.covered_count,
+            "seed_rate": round(self.seed_rate(), 3),
+            "trials_since_progress": self._since_progress,
         }
 
 
