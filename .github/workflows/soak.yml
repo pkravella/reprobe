@@ -22,6 +22,8 @@ jobs:
   soak:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -40,10 +42,13 @@ jobs:
       # lane cannot see, so check it with a handful of trials -- only on the
       # schedule, and only if a key is configured. A paid soak every night would
       # bill the project forever to re-answer what the free lane already proves.
+      # `secrets` is not one of the contexts available to `if`, and using it
+      # there makes the whole workflow file invalid -- which GitHub reports as a
+      # failed run on every push, while the schedule never fires. Surface the
+      # secret as a job-level env var and test that instead; `env` *is*
+      # available in `if`.
       - name: adapter drift check (paid, a few cents)
-        if: ${{ github.event_name == 'schedule' && secrets.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        if: ${{ github.event_name == 'schedule' && env.ANTHROPIC_API_KEY != '' }}
         run: |
           make claude-code
           uv run reprobe run tests/data/scenarios/minimal/scenario.yaml \

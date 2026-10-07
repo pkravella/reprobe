@@ -343,3 +343,46 @@ def test_runs_is_empty_if_the_root_disappears(tmp_path):
     assert store.runs() == []
     with pytest.raises(FileNotFoundError, match="no runs"):
         store.latest_run()
+
+
+def test_run_ids_sort_chronologically_across_a_second_boundary(tmp_path, monkeypatch):
+    """`open_run` must read the clock once, not twice.
+
+    It built the id from a `strftime` call and a separate `time.time()` call.
+    When the second boundary falls between them the stamp stays in the old
+    second while the microseconds wrap to near zero, so that id sorts *earlier*
+    than ids minted earlier in the same second -- and `latest_run` returns the
+    wrong run. `reprobe triage` defaults to the latest run, so this silently
+    triages the wrong one. Observed as a CI flake before it was understood.
+    """
+    import time
+
+    from reprobe import store as store_mod
+
+    # Captured before patching: `store_mod.time` *is* the time module, so
+    # patching it would otherwise make these recurse.
+    real_strftime, real_gmtime = time.strftime, time.gmtime
+
+    base = 1_800_000_000.0  # a whole second, so the boundary is exactly at +1.0
+    state = {"now": base + 0.5}
+
+    def fake_time():
+        return state["now"]
+
+    def fake_strftime(fmt, when=None):
+        # Calling it with no argument is the bug: the caller re-reads the clock
+        # instead of formatting the instant it already has. Pin that read to the
+        # earlier second, which makes the split deterministic instead of a race.
+        return real_strftime(fmt, when if when is not None else real_gmtime(base))
+
+    monkeypatch.setattr(store_mod.time, "time", fake_time)
+    monkeypatch.setattr(store_mod.time, "strftime", fake_strftime)
+    monkeypatch.setattr(store_mod.time, "localtime", real_gmtime)
+
+    store = RunStore(tmp_path)
+    first = store.open_run({})
+    state["now"] = base + 1.000001  # the next second
+    second = store.open_run({})
+
+    assert sorted([first, second]) == [first, second], (first, second)
+    assert store.latest_run() == second
