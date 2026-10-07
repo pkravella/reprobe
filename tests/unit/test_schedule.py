@@ -15,6 +15,7 @@ import pytest
 from reprobe.coverage import CoverageMap, fingerprint
 from reprobe.mutate import Candidate, MutationContext
 from reprobe.schedule import (
+    MAX_SEED_RATE,
     RAMP_TRIALS,
     SEED_INJECTION_RATE,
     STALL_TRIALS,
@@ -410,7 +411,7 @@ def test_exploration_ramps_up_once_the_corpus_stops_paying(ctx):
     before = sched.seed_rate()
     _stalled(sched, rng, STALL_TRIALS + RAMP_TRIALS + 5, cov)
     assert before == pytest.approx(SEED_INJECTION_RATE)
-    assert sched.seed_rate() == pytest.approx(1.0)
+    assert sched.seed_rate() == pytest.approx(MAX_SEED_RATE)
 
 
 def test_the_ramp_is_gradual_not_a_cliff(ctx):
@@ -423,18 +424,26 @@ def test_the_ramp_is_gradual_not_a_cliff(ctx):
         _stalled(sched, rng, 1, cov)
         rates.append(sched.seed_rate())
     assert rates == sorted(rates), "the rate must never fall while the search is stuck"
-    assert SEED_INJECTION_RATE < rates[STALL_TRIALS + RAMP_TRIALS // 2] < 1.0
+    assert SEED_INJECTION_RATE < rates[STALL_TRIALS + RAMP_TRIALS // 2] < MAX_SEED_RATE
 
 
-def test_a_stalled_search_degenerates_to_the_baseline_not_worse(ctx):
-    """The guarantee that matters: stuck, it should match random, never lose."""
+def test_a_stalled_search_explores_heavily_but_never_abandons_its_corpus(ctx):
+    """Stuck, it should approach the baseline -- and stop short of it.
+
+    Going all the way to pure exploration costs roughly half the performance on
+    a gradient that needs two mutations composed, because such a search looks
+    stalled for a long stretch before it pays and a search at 100% exploration
+    gives up exactly then. Measured over 30 seeds: 34.9 unramped, 32.1 capped
+    at 0.7, 17.8 uncapped.
+    """
     sched = EnergyScheduler(builtin_seeds(), ctx)
     rng = random.Random(0)
     cov = _cov("Read")
     sched.observe(sched.next_candidate(rng), cov, sched.coverage_map.update(cov), violated=False)
     _stalled(sched, rng, 80, cov)
-    fresh = sum(1 for i in range(200) if len(sched.next_candidate(random.Random(i)).lineage) == 1)
-    assert fresh == 200, "a fully stalled search should be drawing fresh seeds every trial"
+    fresh = sum(1 for i in range(400) if len(sched.next_candidate(random.Random(i)).lineage) == 1)
+    assert 0.6 < fresh / 400 < 0.85, "should explore heavily"
+    assert fresh < 400, "but a slow climb needs some budget left to keep climbing"
 
 
 def test_the_stall_counter_is_reported_for_the_run_record(ctx):

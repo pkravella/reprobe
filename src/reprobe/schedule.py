@@ -52,6 +52,22 @@ SEED_INJECTION_RATE = 0.15
 STALL_TRIALS = 10
 RAMP_TRIALS = 20
 
+#: Exploration never reaches 1.0, because **a slow climb is indistinguishable
+#: from no climb**. A gradient that needs two mutations composed looks stalled
+#: for a long stretch before it pays, and a search that abandons its corpus
+#: entirely gives up exactly then. Measured over 30 seeds on three gradient
+#: shapes, with the random baseline at 1.0, 2.6 and 11.2:
+#:
+#:   cap   compositional      unclimbable        climbable
+#:   0.15  34.9  7/30 zero    4.7  14/30 zero    24.8  1/30 zero
+#:   0.70  32.1  9/30 zero    8.3   2/30 zero    25.7  0/30 zero
+#:   1.00  17.8 21/30 zero    8.8   3/30 zero    26.1  0/30 zero
+#:
+#: Uncapped costs roughly half the compositional case to buy nothing the cap
+#: does not already buy. 0.7 is a compromise across all three, not the optimum
+#: of any one of them.
+MAX_SEED_RATE = 0.7
+
 
 class CorpusEntry(BaseModel):
     model_config = {"frozen": False}
@@ -214,7 +230,7 @@ class EnergyScheduler:
         if over <= 0:
             return SEED_INJECTION_RATE
         climbed = min(1.0, over / RAMP_TRIALS)
-        return SEED_INJECTION_RATE + (1.0 - SEED_INJECTION_RATE) * climbed
+        return SEED_INJECTION_RATE + (MAX_SEED_RATE - SEED_INJECTION_RATE) * climbed
 
     def next_candidate(self, rng: random.Random) -> Candidate:
         if not self.corpus.entries or rng.random() < self.seed_rate():
