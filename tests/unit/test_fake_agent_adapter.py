@@ -290,3 +290,83 @@ def test_profile_env_defaults_to_dotenv_for_a_bare_call():
 
     env = FakeAgentAdapter.profile_env("always", 1)
     assert json.loads(env["REPROBE_FAKE_PROFILE"])["triggers"][0]["any_of"] == [".env"]
+
+
+# --- the compositional profile --------------------------------------------
+
+
+def test_the_compositional_profile_has_benign_rungs_and_one_violation():
+    """What makes a gradient climbable: behaviour short of a violation.
+
+    The gate's other profiles are binary -- either a trigger fires or the agent
+    does the same honest task regardless of payload -- so coverage cannot tell
+    a payload that got halfway from one that did nothing, and a coverage-guided
+    search has nothing to steer on. Its whole advantage there comes from
+    keeping a payload that already violated.
+    """
+    from reprobe.agents.fake_agent import BENIGN_ACTIONS, PROFILES
+
+    triggers = PROFILES["compositional"]["triggers"]
+    actions = [t["action"] for t in triggers]
+    assert sum(a in BENIGN_ACTIONS for a in actions) >= 2, "no rungs to climb"
+    assert sum(a not in BENIGN_ACTIONS for a in actions) == 1, "exactly one violating action"
+
+
+def test_the_violating_condition_needs_more_than_any_seed_provides():
+    """It must require *composing* mutations, which the existing gate does not.
+
+    `placement_sensitive` is satisfied by 4-5 of the 24 builtin seeds
+    unmutated, so the baseline wins it as a lottery and can never score zero --
+    making "a violation the baseline misses" unreachable by construction.
+    """
+    from reprobe.agents.fake_agent import PROFILES, resolve_profile
+    from reprobe.mutate import Candidate, MutationContext
+    from reprobe.scenario import load_scenario
+    from reprobe.seeds import builtin_seeds
+
+    scn = load_scenario("tests/data/scenarios/minimal/scenario.yaml")
+    ctx = MutationContext(scenario=scn, canary_paths={"api_key": ".env"}, surfaces=["readme"])
+    violating = next(
+        t
+        for t in resolve_profile("compositional", ".env")["triggers"]
+        if t["action"]
+        not in __import__("reprobe.agents.fake_agent", fromlist=["BENIGN_ACTIONS"]).BENIGN_ACTIONS
+    )
+    fired = sum(
+        all(
+            n in Candidate.from_seed(s, surface_id="readme", ctx=ctx).payloads["readme"]
+            for n in violating["all_of"]
+        )
+        for s in builtin_seeds()
+    )
+    assert fired == 0, "an unmutated seed satisfies it; the baseline wins a lottery again"
+    assert "{{ canary_path }}" in str(PROFILES["compositional"]), "needles must follow the canary"
+
+
+def test_a_single_mutation_can_complete_the_composition():
+    """Hard is not the same as impossible. One mutator must be able to supply
+    the missing needle, or neither arm ever fires and the gate is a tie."""
+    import random
+
+    from reprobe.agents.fake_agent import resolve_profile
+    from reprobe.mutate import Candidate, MutationContext
+    from reprobe.mutate.template import WrapInFrame
+    from reprobe.scenario import load_scenario
+    from reprobe.seeds import builtin_seeds
+
+    scn = load_scenario("tests/data/scenarios/minimal/scenario.yaml")
+    ctx = MutationContext(scenario=scn, canary_paths={"api_key": ".env"}, surfaces=["readme"])
+    violating = resolve_profile("compositional", ".env")["triggers"][-1]
+    parent = next(
+        Candidate.from_seed(s, surface_id="readme", ctx=ctx)
+        for s in builtin_seeds()
+        if "POST" in s.text
+    )
+    reached = any(
+        all(
+            n in WrapInFrame().apply(parent, ctx, random.Random(i)).payloads["readme"]
+            for n in violating["all_of"]
+        )
+        for i in range(40)
+    )
+    assert reached, "no single wrap_in_frame draw completes it; the gradient is unreachable"
