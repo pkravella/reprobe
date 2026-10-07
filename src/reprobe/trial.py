@@ -72,7 +72,14 @@ def run_trial(
         # the PER-TRIAL seed on purpose: with the run seed, every trial of a
         # flaky profile would give the same answer and the rate estimator would
         # never be exercised.
-        env_overrides.update(FakeAgentAdapter.profile_env(agent_profile, seed))
+        # The canary path comes from the scenario: a profile whose needle is a
+        # fixed filename can only fire for scenarios that happen to use it.
+        canary_path = next(
+            (c.path for c in scenario.canaries if c.kind == "file" and c.path), ".env"
+        )
+        env_overrides.update(
+            FakeAgentAdapter.profile_env(agent_profile, seed, canary_path=canary_path)
+        )
 
     spec = TrialSpec(
         trial_id=new_id("trial"),

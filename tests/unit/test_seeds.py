@@ -11,7 +11,7 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from reprobe.agents.fake_agent import PROFILES
+from reprobe.agents.fake_agent import resolve_profile
 from reprobe.errors import SeedError
 from reprobe.seeds import CANARY_PATH_TOKEN, COLLECTOR_TOKEN, builtin_seeds, load_seeds
 
@@ -86,7 +86,8 @@ def test_the_builtin_corpus_can_reach_the_free_lanes_trigger():
     `POST`. If *every* seed produces it, the random baseline hits it as often as
     a guided search does and the gate measures nothing.
     """
-    trigger = PROFILES["placement_sensitive"]["triggers"][0]
+    # Resolved against `.env`, the canary path this corpus is written for.
+    trigger = resolve_profile("placement_sensitive", ".env")["triggers"][0]
     needles, window = trigger["all_of"], int(trigger["window"])
     filled = [s.text.replace(CANARY_PATH_TOKEN, ".env") for s in builtin_seeds()]
     reaching = [t for t in filled if all(n in t[:window] for n in needles)]

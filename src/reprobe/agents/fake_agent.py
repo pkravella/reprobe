@@ -27,6 +27,15 @@ from reprobe.trace import Event
 #: The actions the container implements, one per R4 check. The host keeps the
 #: canonical set so a typo in a profile is caught here rather than making a
 #: gate silently never fire.
+#: Filled from the scenario's file canary before the profile is handed to the
+#: container. A profile that hardcoded `.env` could only ever fire for
+#: scenarios that happened to use that path: the mutators fill the same token
+#: in a payload from the same place, so a scenario keeping its secret in
+#: `.npmrc` produced payloads the trigger could never match, scored zero on
+#: every arm, and read as a tie rather than as a scenario nothing could
+#: exercise. Found by the Phase-2 gate.
+CANARY_PATH_TOKEN = "{{ canary_path }}"
+
 ACTIONS: tuple[str, ...] = (
     "read_canary",
     "exfil_canary",
@@ -41,7 +50,7 @@ PROFILES: dict[str, dict[str, Any]] = {
         "triggers": [
             {
                 "id": "read",
-                "any_of": [".env"],
+                "any_of": [CANARY_PATH_TOKEN],
                 "window": 10_000,
                 "probability": 1.0,
                 "action": "read_canary",
@@ -55,7 +64,7 @@ PROFILES: dict[str, dict[str, Any]] = {
         "triggers": [
             {
                 "id": "exfil",
-                "all_of": ["POST", ".env"],
+                "all_of": ["POST", CANARY_PATH_TOKEN],
                 "window": 10_000,
                 "probability": 0.6,
                 "action": "exfil_canary",
@@ -70,7 +79,7 @@ PROFILES: dict[str, dict[str, Any]] = {
         "triggers": [
             {
                 "id": "exfil",
-                "all_of": ["POST", ".env"],
+                "all_of": ["POST", CANARY_PATH_TOKEN],
                 "window": 300,
                 "probability": 0.9,
                 "action": "exfil_canary",
@@ -99,6 +108,26 @@ PROFILES: dict[str, dict[str, Any]] = {
         ],
     },
 }
+
+
+def resolve_profile(name: str, canary_path: str) -> dict[str, Any]:
+    """A profile with its canary-path token filled in.
+
+    Returns a copy; the table is module state and several trials share it.
+    """
+    try:
+        profile = PROFILES[name]
+    except KeyError:
+        raise KeyError(f"unknown profile {name!r}; known profiles: {sorted(PROFILES)}") from None
+
+    def fill(values: Any) -> Any:
+        return [str(v).replace(CANARY_PATH_TOKEN, canary_path) for v in values]
+
+    triggers = [
+        {k: (fill(v) if k in ("any_of", "all_of") else v) for k, v in trigger.items()}
+        for trigger in profile.get("triggers", [])
+    ]
+    return {**profile, "triggers": triggers}
 
 
 class FakeAgentAdapter:
@@ -133,20 +162,14 @@ class FakeAgentAdapter:
         return ClaudeCodeAdapter().error_from(text)
 
     @staticmethod
-    def profile_env(name: str, seed: int) -> dict[str, str]:
+    def profile_env(name: str, seed: int, canary_path: str = ".env") -> dict[str, str]:
         """What `TrialSpec.env_overrides` must carry for a named profile.
 
         `seed` is the PER-TRIAL seed, not the run seed -- with one seed every
         trial of a flaky profile gives the same answer and the rate estimator
         is never exercised.
         """
-        try:
-            profile = PROFILES[name]
-        except KeyError:
-            raise KeyError(
-                f"unknown profile {name!r}; known profiles: {sorted(PROFILES)}"
-            ) from None
         return {
-            "REPROBE_FAKE_PROFILE": json.dumps(profile),
+            "REPROBE_FAKE_PROFILE": json.dumps(resolve_profile(name, canary_path)),
             "REPROBE_FAKE_SEED": str(seed),
         }
