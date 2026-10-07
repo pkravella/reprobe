@@ -158,8 +158,12 @@ def test_every_profile_does_the_honest_task_too():
 
 
 def test_profile_env_carries_the_profile_and_the_seed():
+    from reprobe.agents.fake_agent import resolve_profile
+
     env = FakeAgentAdapter.profile_env("flaky_60", seed=7)
-    assert json.loads(env["REPROBE_FAKE_PROFILE"]) == PROFILES["flaky_60"]
+    # The *resolved* profile, not the table entry: the needles carry the
+    # scenario's canary path by the time the container sees them.
+    assert json.loads(env["REPROBE_FAKE_PROFILE"]) == resolve_profile("flaky_60", ".env")
     assert env["REPROBE_FAKE_SEED"] == "7"
 
 
@@ -242,3 +246,47 @@ def test_version_is_the_reprobe_version():
     # Not a vendor's version: the thing under test here is Reprobe itself, so
     # that is what a finding from this lane is pinned to.
     assert FakeAgentAdapter().version_from("anything") == __version__
+
+
+# --- the profile's needles follow the scenario's canary --------------------
+
+
+def test_profile_needles_are_filled_from_the_scenario_canary():
+    """A profile hardcoding `.env` can only ever fire for scenarios that use it.
+
+    Found by the Phase-2 gate: `dependency-metadata` keeps its canary in
+    `.npmrc`, so the mutators fill `{{ canary_path }}` with `.npmrc`, the
+    payloads never contain the literal `.env`, and the trigger cannot fire.
+    That scenario scored 0 on both arms for all three seeds and read as a tie
+    rather than as a scenario the harness could never exercise.
+    """
+    from reprobe.agents.fake_agent import resolve_profile
+
+    resolved = resolve_profile("placement_sensitive", ".npmrc")
+    assert resolved["triggers"][0]["all_of"] == ["POST", ".npmrc"]
+    assert resolve_profile("always", ".npmrc")["triggers"][0]["any_of"] == [".npmrc"]
+
+
+def test_resolving_a_profile_does_not_mutate_the_table():
+    from reprobe.agents.fake_agent import PROFILES, resolve_profile
+
+    resolve_profile("placement_sensitive", ".npmrc")
+    assert "{{ canary_path }}" in PROFILES["placement_sensitive"]["triggers"][0]["all_of"]
+
+
+def test_profile_env_carries_the_resolved_profile():
+    import json
+
+    from reprobe.agents.fake_agent import FakeAgentAdapter
+
+    env = FakeAgentAdapter.profile_env("placement_sensitive", 7, canary_path=".npmrc")
+    assert json.loads(env["REPROBE_FAKE_PROFILE"])["triggers"][0]["all_of"] == ["POST", ".npmrc"]
+
+
+def test_profile_env_defaults_to_dotenv_for_a_bare_call():
+    import json
+
+    from reprobe.agents.fake_agent import FakeAgentAdapter
+
+    env = FakeAgentAdapter.profile_env("always", 1)
+    assert json.loads(env["REPROBE_FAKE_PROFILE"])["triggers"][0]["any_of"] == [".env"]

@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 
-from reprobe.agents.fake_agent import PROFILES
+from reprobe.agents.fake_agent import resolve_profile
 
 pytestmark = pytest.mark.docker
 
@@ -46,8 +46,10 @@ def workspace(tmp_path):
     return ws
 
 
-def _profile_json(name: str) -> str:
-    return json.dumps(PROFILES[name])
+def _profile_json(name: str, canary_path: str = ".env") -> str:
+    # Resolved, as the host adapter does: the needles carry the scenario's
+    # canary path rather than a filename baked into the profile table.
+    return json.dumps(resolve_profile(name, canary_path))
 
 
 def _run_traced(

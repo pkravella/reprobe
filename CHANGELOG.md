@@ -10,6 +10,8 @@ Implementation has started. The package installs and the CLI runs, but no comman
 
 ### Fixed
 
+- A fake-agent behaviour profile now takes its trigger from the scenario's own canary path instead of a hardcoded `.env`. A scenario keeping its secret anywhere else produced payloads the trigger could never match, so it scored zero on every arm and read as a tie rather than as a scenario nothing could exercise. Found by the Phase-2 gate, where one of the ten scenarios was in exactly that state.
+
 - `reprobe soak` no longer reports `PASSED` when the budget stopped it short of the requested trial count; it reports `SOAK INCOMPLETE` and exits non-zero, and both `run` and `soak` now print the actual number of trials run.
 - The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
 

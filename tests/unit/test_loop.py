@@ -229,13 +229,13 @@ def test_the_agent_profile_reaches_the_sandbox(minimal_scenario, tmp_path):
     )
     import json
 
-    from reprobe.agents.fake_agent import PROFILES
+    from reprobe.agents.fake_agent import resolve_profile
 
     assert sandbox.calls
     for spec in sandbox.calls:
-        assert (
-            json.loads(spec.env_overrides["REPROBE_FAKE_PROFILE"])
-            == (PROFILES["placement_sensitive"])
+        # Resolved against the scenario's own canary path, not the raw table.
+        assert json.loads(spec.env_overrides["REPROBE_FAKE_PROFILE"]) == resolve_profile(
+            "placement_sensitive", ".env"
         )
     # Per-trial seeds, not the run seed: a flaky profile that answered the same
     # way every trial would give the rate estimator nothing to measure.
