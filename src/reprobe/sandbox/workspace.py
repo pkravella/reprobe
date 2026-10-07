@@ -81,10 +81,11 @@ def _check(spec: TrialSpec) -> None:
     Validating after the copy would leave a half-built workspace behind on the
     error path, which the caller then has to clean up or mistake for a real one.
     """
-    known = {surface.id for surface in spec.scenario.surfaces}
-    unknown = set(spec.payloads) - known
-    if unknown:
-        raise ScenarioError(f"payload given for unknown surface(s): {sorted(unknown)}")
+    # One definition, on the Scenario, because `run_trial` needs the same check
+    # for the fake-sandbox lane, which never gets here. Keeping it here as well
+    # covers a spec handed straight to the sandbox -- an exported regression
+    # test does exactly that.
+    spec.scenario.check_payloads(spec.payloads)
 
     for canary in spec.canaries:
         if canary.spec.kind == "file" and not canary.spec.path:

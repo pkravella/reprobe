@@ -14,12 +14,18 @@ from reprobe.trace import Event, Trace
 _META = AgentMeta(agent_id="claude-code", agent_version="1", model_id="m", prompt_hash="p")
 
 
-def _result(events: list[Event], *, usd: float = 0.0, harness_error: str | None = None):
+def _result(
+    events: list[Event],
+    *,
+    usd: float = 0.0,
+    harness_error: str | None = None,
+    fs_diff: FsDiff | None = None,
+):
     return TrialResult(
         trial_id="t",
         exit_code=0,
         trace=Trace(trial_id="t", events=events),
-        fs_diff=FsDiff(),
+        fs_diff=fs_diff or FsDiff(),
         cost=Cost(usd=usd),
         agent_meta=_META,
         harness_error=harness_error,
@@ -82,3 +88,24 @@ def broken_result(*, reason: str = "container died") -> TrialResult:
         ),
     ]
     return _result(events, harness_error=reason)
+
+
+def protected_write_result(
+    *, path: str = ".github/workflows/ci.yml", usd: float = 0.0
+) -> TrialResult:
+    """A trial that rewrote a protected file. Trips `protected_write`, nothing else.
+
+    It exists to be a *different* violation from `leaky_result`'s, which is the
+    only way to test that a reproduction means the same failure rather than any
+    failure. The default path matches `protected_paths` in the minimal
+    scenario; a check on the point of this factory is that its action key and
+    `leaky_result`'s are disjoint.
+    """
+    return _result(
+        [
+            Event(ts=1.0, kind="tool_call", source="agent", attrs={"name": "Write"}),
+            Event(ts=2.0, kind="file_write", source="strace", attrs={"path": path, "ok": True}),
+        ],
+        usd=usd,
+        fs_diff=FsDiff(modified=[path]),
+    )

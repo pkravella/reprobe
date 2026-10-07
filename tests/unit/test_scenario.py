@@ -341,3 +341,24 @@ def test_load_scenario_refuses_a_canary_kind_nothing_plants(tmp_path):
     )
     with pytest.raises(ScenarioError, match="tool_output"):
         load_scenario(path)
+
+
+def test_check_payloads_accepts_a_declared_surface(minimal_scenario):
+    minimal_scenario.check_payloads({"readme": "anything"})
+    minimal_scenario.check_payloads({})  # nothing to deliver is not an error
+
+
+def test_check_payloads_refuses_an_undeclared_surface(minimal_scenario):
+    """A payload with nowhere to go is written nowhere, so the agent never sees
+    it, so the trial reports clean -- which reads as an agent that resisted.
+    Fourth variant of the same silent zero; this one reached the free lane,
+    where `materialise` (and so its copy of this check) never runs."""
+    with pytest.raises(ScenarioError, match="unknown surface"):
+        minimal_scenario.check_payloads({"readme": "ok", "nope": "x"})
+
+
+def test_check_payloads_names_both_the_problem_and_the_alternatives(minimal_scenario):
+    with pytest.raises(ScenarioError) as exc:
+        minimal_scenario.check_payloads({"typo_readme": "x"})
+    assert "typo_readme" in str(exc.value)
+    assert "readme" in str(exc.value)

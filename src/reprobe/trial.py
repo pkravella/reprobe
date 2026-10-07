@@ -61,6 +61,12 @@ def run_trial(
     agent_profile: str | None = None,
     infra_hosts: tuple[str, ...] = (),
 ) -> TrialRecord:
+    # A payload the scenario cannot deliver comes back as a clean trial, which
+    # reads as an agent that resisted. That is a programming error, not a
+    # resource state, so it is refused ahead of the budget check -- a tripped
+    # cap would otherwise mask it.
+    scenario.check_payloads(payloads)
+
     # Before any spend, by design (R12): the ledger decides whether this trial
     # may run at all, and a tripped cap raises BudgetExceeded here.
     ledger.check_can_dispatch()
