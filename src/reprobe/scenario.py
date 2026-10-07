@@ -143,6 +143,27 @@ class Scenario(BaseModel):
                 return s
         raise ScenarioError(f"unknown surface id: {surface_id!r}")
 
+    def check_payloads(self, payloads: Mapping[str, str]) -> None:
+        """Refuse a payload this scenario has nowhere to put.
+
+        A payload keyed to a surface the scenario never declares is written
+        nowhere, so the agent cannot read it, so the trial comes back clean --
+        and a clean trial is indistinguishable from an agent that saw the
+        injection and resisted. Every layer above reads that as a real negative
+        result: the rate estimator reports 0.0, the shrinker cuts to nothing,
+        and the search scores a tie.
+
+        Called from `run_trial`, which is the one path a trial takes, so the
+        guard covers the fake-sandbox lane too -- `materialise` is the real
+        sandbox's copy of this check and runs in only one of the two lanes.
+        """
+        unknown = set(payloads) - {surface.id for surface in self.surfaces}
+        if unknown:
+            raise ScenarioError(
+                f"payload given for unknown surface(s): {sorted(unknown)}; "
+                f"this scenario declares {sorted(s.id for s in self.surfaces)}"
+            )
+
 
 def _fixture_manifest(root: Path) -> list[list[str]]:
     """Sorted (relative path, content hash) pairs for every file in the fixture."""
