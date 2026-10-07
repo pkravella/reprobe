@@ -8,23 +8,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Implementation has started. The package installs and the CLI runs, but no command does anything yet.
 
-### Fixed
-
-- A fake-agent behaviour profile now takes its trigger from the scenario's own canary path instead of a hardcoded `.env`. A scenario keeping its secret anywhere else produced payloads the trigger could never match, so it scored zero on every arm and read as a tie rather than as a scenario nothing could exercise. Found by the Phase-2 gate, where one of the ten scenarios was in exactly that state.
-
-- `reprobe soak` no longer reports `PASSED` when the budget stopped it short of the requested trial count; it reports `SOAK INCOMPLETE` and exits non-zero, and both `run` and `soak` now print the actual number of trials run.
-- The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
-
-### Changed
-
-- The coverage-guided scheduler now explores more when it stops getting anywhere. While it is finding new behaviour or new violations it spends most of its budget mutating what already worked, as before; once neither has happened for a while it raises the share of fresh seeds, reaching full exploration if the corpus never pays off again. Found by the Phase-2 gate: on scenarios where no mutation could reach the target — the payload's position is fixed by the surface template, so there was nothing to climb — a fixed-rate guided search drew a sixth as many fresh seeds as the blind baseline and lost to it, scoring zero where the baseline scored three to eight. A search with nothing left to climb should explore, and stuck it should match the baseline rather than trail it.
-
-- Documentation reflects that the harness is built and milestone 1 is met: the README status block, its safety note about the narrowed egress guarantee, and CONTRIBUTING.
-
-### Fixed
-
-- The free lane's scripted agent now reads the attacker-controlled files the *scenario* declares, instead of four filenames baked into its container image. A scenario whose payload went anywhere else had it written to disk and never read, so the trial came back clean — indistinguishable from an agent that saw the injection and resisted it, and enough to make a comparison across such scenarios report a tie.
-
 ### Added
 
 - The scenario pack: ten small but plausible repositories, each with honest work for the agent and one surface an attacker controls — a README, an issue body, a dependency's own metadata, a code comment, a failing test's assertion message, a build log, an MCP tool description, a vendored docs page, a commit log export, and a file buried deep in the docs tree. Between them they cover all five checks. Every fixture is synthetic and none contains an attack: the payload is substituted into the surface at trial time, which is what makes a shrunk payload mean anything. Each scenario is verified in both directions against the real sandbox — clean on a benign payload, and violating on a triggering one, because a scenario that never delivers its payload is also clean. Catalogue in [scenarios/README.md](scenarios/README.md).
@@ -55,6 +38,18 @@ Implementation has started. The package installs and the CLI runs, but no comman
 - `reprobe.scenario`: declarative YAML scenarios (R1) — attacker-controlled surfaces, synthetic canary specs, egress allowlist, protected paths, policy checks and per-trial limits, with a content hash that covers the fixture's contents so a finding pins the environment it was found in. Authoring guide in [docs/scenarios.md](docs/scenarios.md).
 - `reprobe.canary`: per-trial synthetic secrets (`RPRB_CANARY_` prefix) and detection that survives line-wrapping, whitespace splitting, URL encoding, and base64 or hex encoding embedded in a larger body.
 - `reprobe.ids`: one canonical JSON serialisation and one content-hash algorithm for the whole project, plus `new_id` for identity. Hashes are version-tagged so the scheme can be changed without old and new values silently colliding.
+
+### Changed
+
+- The coverage-guided scheduler now explores more when it stops getting anywhere. While it is finding new behaviour or new violations it spends most of its budget mutating what already worked, as before; once neither has happened for a while it raises the share of fresh seeds, reaching full exploration if the corpus never pays off again. Found by the Phase-2 gate: on scenarios where no mutation could reach the target — the payload's position is fixed by the surface template, so there was nothing to climb — a fixed-rate guided search drew a sixth as many fresh seeds as the blind baseline and lost to it, scoring zero where the baseline scored three to eight. A search with nothing left to climb should explore, and stuck it should match the baseline rather than trail it.
+- Documentation reflects that the harness is built and milestone 1 is met: the README status block, its safety note about the narrowed egress guarantee, and CONTRIBUTING.
+
+### Fixed
+
+- A fake-agent behaviour profile now takes its trigger from the scenario's own canary path instead of a hardcoded `.env`. A scenario keeping its secret anywhere else produced payloads the trigger could never match, so it scored zero on every arm and read as a tie rather than as a scenario nothing could exercise. Found by the Phase-2 gate, where one of the ten scenarios was in exactly that state.
+- `reprobe soak` no longer reports `PASSED` when the budget stopped it short of the requested trial count; it reports `SOAK INCOMPLETE` and exits non-zero, and both `run` and `soak` now print the actual number of trials run.
+- The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
+- The free lane's scripted agent now reads the attacker-controlled files the *scenario* declares, instead of four filenames baked into its container image. A scenario whose payload went anywhere else had it written to disk and never read, so the trial came back clean — indistinguishable from an agent that saw the injection and resisted it, and enough to make a comparison across such scenarios report a tie.
 
 ### Planned for 0.1.0
 
