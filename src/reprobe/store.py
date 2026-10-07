@@ -71,11 +71,19 @@ class RunStore:
         even for runs opened in the same second -- `reprobe triage` defaults to
         the latest run, and a tie broken by a random suffix would silently
         triage the wrong one.
+
+        Both halves of the stamp come from **one** clock reading. Reading it
+        twice meant that when the second boundary fell between the two reads,
+        the seconds stayed in the old second while the microseconds wrapped to
+        near zero -- so that id sorted *earlier* than ids minted earlier in the
+        same second, and `latest_run` returned the wrong run. It surfaced as a
+        CI flake before it was understood.
         """
         with self._lock:
             while True:
-                stamp = time.strftime("%Y%m%dT%H%M%S")
-                micros = f"{int(time.time() * 1_000_000) % 1_000_000:06d}"
+                now = time.time()
+                stamp = time.strftime("%Y%m%dT%H%M%S", time.localtime(now))
+                micros = f"{int(now % 1 * 1_000_000):06d}"
                 run_id = f"{stamp}-{micros}-{new_id('r').split('_')[1]}"
                 directory = self.root / run_id
                 try:
