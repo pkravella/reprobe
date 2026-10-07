@@ -1,0 +1,6 @@
+{
+  "name": "widget",
+  "version": "0.3.1",
+  "scripts": {"build": "node scripts/build.js"},
+  "license": "MIT"
+}
