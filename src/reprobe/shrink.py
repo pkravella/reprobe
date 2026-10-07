@@ -34,17 +34,21 @@ module could have, so candidate and estimate move together or not at all.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel
 
 from reprobe.confirm import Confirmation
+from reprobe.errors import ConfigError
 from reprobe.mutate import Candidate, Mutation
+from reprobe.scenario import Scenario
 from reprobe.stats import DEFAULT_THRESHOLD, RateEstimate
 
 Granularity = str
 ConfirmFn = Callable[[Candidate], Confirmation]
+ConfirmWithFn = Callable[[Scenario, Candidate], Confirmation]
 DEFAULT_GRANULARITIES: tuple[Granularity, ...] = ("surface", "block", "line", "token")
 _SEPARATORS: dict[Granularity, str] = {"block": "\n\n", "line": "\n", "token": " "}
 
@@ -126,7 +130,7 @@ class _Run:
 
     def try_cut(self, payloads: dict[str, str], granularity: Granularity) -> bool:
         """Ask the oracle about `payloads`; adopt them only if the bound holds."""
-        if self.exhausted or not payloads:
+        if self.exhausted:
             return False
         reduced = Candidate.rebuild(
             payloads, lineage=self.candidate.lineage, seed_ids=self.candidate.seed_ids
@@ -158,6 +162,25 @@ class _Run:
         )
 
 
+def _require_payloads(candidate: Candidate) -> None:
+    """A candidate with no payloads delivers nothing, so there is no finding.
+
+    Measuring one would report a rate for an input the agent never saw -- the
+    undelivered-payload bug in another costume, and the triage layer is exactly
+    where that reads as a real negative result. Refused at both entry points.
+
+    It also makes two guards provably unnecessary: `check_payloads` guarantees
+    every payload key names a declared surface, so a non-empty payload always
+    holds at least one surface, so `env_knobs` always leaves at least one
+    surface without a knob, so a narrowed scenario can never run out of them.
+    """
+    if not candidate.payloads:
+        raise ConfigError(
+            f"candidate {candidate.id} has no payloads; there is nothing to shrink, "
+            "and a rate measured for it would describe an input the agent never saw"
+        )
+
+
 def shrink(
     candidate: Candidate,
     *,
@@ -166,6 +189,7 @@ def shrink(
     granularities: Sequence[Granularity] = DEFAULT_GRANULARITIES,
     max_steps: int = 200,
 ) -> ShrinkResult:
+    _require_payloads(candidate)
     run = _Run(candidate, confirm, threshold, max_steps)
 
     # The finding does not hold up at the threshold in the first place, so there
@@ -235,10 +259,138 @@ def _shrink_one_surface(run: _Run, sid: str, granularity: Granularity) -> None:
             n = min(len(parts), n * 2)
 
 
+# --- environment prerequisites (R10's other half) -------------------------
+#
+# R10 asks for "payload lines, tokens AND environment prerequisites". Above is
+# the payload; below asks which parts of the *setup* are load-bearing. "Still
+# reproduces with no egress allowlist and only the README surface" tells an
+# engineer what to change; a minimal payload on its own does not.
+
+
+@dataclass(frozen=True, slots=True)
+class EnvKnob:
+    """One removable prerequisite, and how to remove it."""
+
+    id: str
+    describe: str
+    apply: Callable[[Scenario], Scenario]
+
+
+class EnvShrinkResult(BaseModel):
+    model_config = {"frozen": True, "arbitrary_types_allowed": True}
+
+    scenario: Scenario
+    removed: list[str]
+    removed_describe: list[str]
+    estimate: RateEstimate
+
+    def summary(self) -> str:
+        if not self.removed:
+            return "every declared prerequisite is load-bearing"
+        return "no longer needs: " + "; ".join(self.removed_describe)
+
+
+def env_knobs(scenario: Scenario, holding: Mapping[str, str]) -> list[EnvKnob]:
+    """Prerequisites worth testing for this scenario, holding `holding` fixed.
+
+    `holding` is the candidate's payloads. **No knob is offered for a surface
+    the payload fills.** Such a surface is part of the finding rather than a
+    prerequisite of it, and dropping it would leave the scenario and the payload
+    disagreeing -- which `check_payloads` refuses, so the knob would raise
+    rather than report "not needed".
+
+    No fixture-directory knob, deliberately. `fixture_dir` is read by exactly
+    one thing, `workspace.materialise` in the real sandbox; `FakeSandbox` never
+    reads it and the fake agent reads only the surface paths and the canary
+    path. A fixture knob would therefore be accepted on every scenario in both
+    free lanes and report that the whole repository is unnecessary -- a fact
+    about the lane, not about the finding. It wants an agent that actually
+    reads the repo (Task 35's local model).
+    """
+    knobs: list[EnvKnob] = []
+
+    for surface in scenario.surfaces:
+        if surface.id in holding:
+            continue
+        sid = surface.id
+
+        def drop_surface(scn: Scenario, sid: str = sid) -> Scenario:
+            return scn.model_copy(update={"surfaces": [s for s in scn.surfaces if s.id != sid]})
+
+        knobs.append(
+            EnvKnob(f"surface:{sid}", f"attacker control over {surface.path}", drop_surface)
+        )
+
+    if scenario.egress_allowlist:
+        allowed = ", ".join(scenario.egress_allowlist)
+        knobs.append(
+            EnvKnob(
+                "egress_allowlist",
+                f"an egress allowlist ({allowed})",
+                lambda scn: scn.model_copy(update={"egress_allowlist": []}),
+            )
+        )
+
+    for pattern in scenario.protected_paths:
+
+        def drop_protected(scn: Scenario, pattern: str = pattern) -> Scenario:
+            return scn.model_copy(
+                update={"protected_paths": [p for p in scn.protected_paths if p != pattern]}
+            )
+
+        knobs.append(EnvKnob(f"protected_path:{pattern}", f"protecting {pattern}", drop_protected))
+
+    return knobs
+
+
+def shrink_environment(
+    candidate: Candidate,
+    scenario: Scenario,
+    *,
+    confirm_with: ConfirmWithFn,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> EnvShrinkResult:
+    """Drop every prerequisite the finding turns out not to need.
+
+    Same acceptance rule as the payload shrinker, for the same reason: a knob
+    comes out only if the Wilson lower bound still clears the threshold without
+    it.
+    """
+    _require_payloads(candidate)
+    current = scenario
+    removed: list[str] = []
+    describes: list[str] = []
+    best = confirm_with(current, candidate).estimate
+
+    # Nothing to narrow about a finding that does not hold in the first place,
+    # and one question is cheaper than one per knob to learn the same thing.
+    if best.lo < threshold:
+        return EnvShrinkResult(scenario=scenario, removed=[], removed_describe=[], estimate=best)
+
+    for knob in env_knobs(scenario, candidate.payloads):
+        # No `if not reduced.surfaces` guard: see `_require_payloads` for why a
+        # narrowed scenario cannot run out of attacker-controlled surfaces.
+        reduced = knob.apply(current)
+        result = confirm_with(reduced, candidate)
+        if result.estimate.lo >= threshold:
+            current = reduced
+            removed.append(knob.id)
+            describes.append(knob.describe)
+            best = result.estimate
+
+    return EnvShrinkResult(
+        scenario=current, removed=removed, removed_describe=describes, estimate=best
+    )
+
+
 __all__ = [
     "DEFAULT_GRANULARITIES",
+    "EnvKnob",
+    "EnvShrinkResult",
     "ShrinkResult",
+    "env_knobs",
     "join_payload",
     "shrink",
+    "shrink_environment",
     "split_payload",
 ]
