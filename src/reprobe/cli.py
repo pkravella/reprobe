@@ -317,23 +317,39 @@ def fuzz(
         f"  covered edges     {stats.get('covered_edges')}\n"
         f"  cost              ${result.cost_usd:.4f}\n"
         f"  wall              {result.wall_seconds:.0f}s\n\n"
-        f"next: reprobe triage {out} --run {result.run_id}"
+        f"next (Phase 3): reprobe triage {out} --run {result.run_id}"
     )
+
+
+def _not_built_yet(command: str, phase: str) -> None:
+    """Exit cleanly for a command that is declared but not implemented.
+
+    Every subcommand is declared from the start so the shape of the pipeline is
+    visible, and `reprobe fuzz` ends by pointing at `reprobe triage`. Following
+    that pointer used to print a bare `NotImplementedError` traceback, which
+    reads like a crash rather than a feature that has not landed.
+    """
+    typer.echo(
+        f"error: `reprobe {command}` is not built yet; it lands in {phase}.\n"
+        "       Run `reprobe --help` to see what works today.",
+        err=True,
+    )
+    raise typer.Exit(2)
 
 
 @app.command()
 def triage() -> None:
     """Estimate reproduction rates and shrink confirmed findings."""
-    raise NotImplementedError
+    _not_built_yet("triage", "Phase 3")
 
 
 @app.command()
 def export() -> None:
     """Export findings as a pytest suite and a GitHub Action."""
-    raise NotImplementedError
+    _not_built_yet("export", "Phase 4")
 
 
 @app.command()
 def verify() -> None:
     """Re-run exported findings and report whether each still reproduces."""
-    raise NotImplementedError
+    _not_built_yet("verify", "Phase 4")

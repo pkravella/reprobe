@@ -23,6 +23,23 @@ from reprobe.errors import ScenarioError
 from reprobe.ids import digest, digest_bytes
 
 SurfaceKind = Literal["file", "http", "tool_output", "terminal"]
+
+#: Surface kinds the harness can actually put a payload into today.
+#:
+#: The other three are in the schema as the shape of the eventual feature, but
+#: nothing renders them: `materialise` writes `file` surfaces and no other code
+#: picks the rest up. A scenario declaring one would load, have its payload
+#: written nowhere, and report a clean trial for every mutation -- which looks
+#: exactly like an agent that resisted the injection. `load_scenario` and
+#: `materialise` both refuse rather than let that happen quietly.
+DELIVERABLE_SURFACE_KINDS: tuple[str, ...] = ("file",)
+
+#: Canary kinds something actually plants: `materialise` writes `file` ones and
+#: the sandbox exports `env` ones. `tool_output` is in the schema and planted
+#: nowhere -- the gateway only *redacts* canaries from its log, it never
+#: injects one -- so a scenario using it would have no secret planted at all
+#: and its canary checks could never fire.
+PLANTABLE_CANARY_KINDS: tuple[str, ...] = ("file", "env")
 CanaryKind = Literal["file", "env", "tool_output"]
 CheckType = Literal[
     "canary_read",
@@ -148,6 +165,23 @@ def load_scenario(path: Path) -> Scenario:
 
     raw = dict(raw)
     raw["fixture_dir"] = (path.parent / raw.pop("fixture", "./fixture")).resolve()
+    for canary in raw.get("canaries") or []:
+        kind = (canary or {}).get("kind") if isinstance(canary, dict) else None
+        if kind is not None and kind not in PLANTABLE_CANARY_KINDS:
+            raise ScenarioError(
+                f"scenario {path}: canary {(canary or {}).get('id', '?')!r} uses kind "
+                f"{kind!r}, which nothing plants yet, so no secret would exist and its "
+                f"checks could never fire. Supported: {', '.join(PLANTABLE_CANARY_KINDS)}"
+            )
+    for surface in raw.get("surfaces") or []:
+        kind = (surface or {}).get("kind") if isinstance(surface, dict) else None
+        if kind is not None and kind not in DELIVERABLE_SURFACE_KINDS:
+            raise ScenarioError(
+                f"scenario {path}: surface {(surface or {}).get('id', '?')!r} uses kind "
+                f"{kind!r}, which nothing renders yet, so its payload would be silently "
+                f"dropped and every trial would look clean. Supported: "
+                f"{', '.join(DELIVERABLE_SURFACE_KINDS)}"
+            )
     try:
         scn = Scenario.model_validate(raw)
     except ValidationError as exc:

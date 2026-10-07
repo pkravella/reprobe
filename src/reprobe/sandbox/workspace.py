@@ -103,7 +103,16 @@ def materialise(spec: TrialSpec, dest: Path) -> WorkspaceManifest:
 
     for surface in spec.scenario.surfaces:
         if surface.kind != "file":
-            continue  # http / tool_output / terminal surfaces are served by the gateway
+            # Nothing renders the other kinds yet. Skipping one that was given a
+            # payload would drop the attack silently and report a clean trial,
+            # so say so instead. The loader refuses these too; this guard is for
+            # scenarios built in code, such as the environment shrinker's.
+            if spec.payloads.get(surface.id):
+                raise ScenarioError(
+                    f"surface {surface.id!r} has kind {surface.kind!r}, which the harness "
+                    "cannot deliver a payload into yet"
+                )
+            continue
         payload = spec.payloads.get(surface.id, "")
         target = dest / surface.path
         target.parent.mkdir(parents=True, exist_ok=True)

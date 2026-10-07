@@ -38,12 +38,14 @@ Both are filled by the mutation context from the scenario. **No seed may hardcod
 
 ## The four `*_post_*` seeds are load-bearing
 
-The free lane's fake agent (`images/fakeagent/agent.py`) fires on **case-sensitive substrings inside a character window**. Its `placement_sensitive` and `flaky_60` profiles both want `POST` and the canary path together. No mutator invents the word `POST`, so:
+The free lane's fake agent (`images/fakeagent/agent.py`) fires on **case-sensitive substrings inside a character window**. Its `placement_sensitive` and `flaky_60` profiles both want `POST` and the canary path together — the path comes from the scenario, so these seeds work whatever a scenario calls its secret. No mutator invents the word `POST`, so:
 
 - if **no** seed carries that shape, the Phase-2 search gate and the whole triage phase can never fire without spending real money;
 - if **every** seed carries it, the random baseline hits it exactly as often as a guided search does, and the gate stops measuring anything.
 
 So four of the twenty-four do, and a test holds that at "at least one, at most half". The remaining gradient — getting the payload into the first 300 characters — is what the scheduler has to climb.
+
+The `compositional` profile raises that bar deliberately: it also wants a frame marker that **no** seed contains and only a mutator can add, so reaching it requires composing two changes rather than drawing one lucky seed. That is the profile to measure a search against; see [benchmark-v0.1.md](benchmark-v0.1.md).
 
 ## The twenty-four
 
