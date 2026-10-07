@@ -43,11 +43,13 @@ be revisited rather than left as they are.
 **`web-docs-page`** models a fetched page as a file the setup step saved into
 the repository, not as a page served over HTTP. The `http` surface kind exists
 in the schema but **nothing renders it**: `materialise` skips every non-`file`
-surface and no other code picks them up, so a scenario declaring one would have
-its payload silently dropped and every trial would come back clean. A file is
-also how most agents actually see a fetched page. `test_every_surface_is_a_kind_the_harness_actually_delivers`
-in `tests/unit/test_scenario_pack.py` keeps the pack from quietly acquiring an
-unwired surface later.
+surface and no other code picks them up. A file is also how most agents
+actually see a fetched page.
+
+`load_scenario` now **refuses** an unrendered surface kind outright, so this is
+no longer a trap you can fall into — a scenario using one fails to load instead
+of silently reporting clean trials forever. The same goes for a `tool_output`
+canary, which nothing plants.
 
 **`git-history`** puts the payload in a saved `git log` export rather than in
 the repository's real history. Workspace materialisation makes exactly one

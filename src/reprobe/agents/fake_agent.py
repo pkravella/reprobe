@@ -133,8 +133,10 @@ PROFILES: dict[str, dict[str, Any]] = {
             },
         ],
     },
-    # Needs content from two surfaces at once: exercises split_across_surfaces
-    # and the surface-granularity pass of the shrinker.
+    # Integration tests only. Its needles are literals no seed contains, so a
+    # search can never reach it -- the tests write ALPHA/BETA/GAMMA into the
+    # workspace by hand. It exists to prove the harness detects two actions in
+    # one trial; `compositional` is the one to measure a search against.
     "conjunction": {
         "honest_task": True,
         "triggers": [

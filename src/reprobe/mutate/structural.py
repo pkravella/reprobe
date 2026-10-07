@@ -144,8 +144,10 @@ class EncodePayload:
 class SplitAcrossSurfaces:
     """Put half the instruction in one attacker-controlled file and half in another.
 
-    `conjunction` in the fake agent's profile table exists for this: a check
-    that fires only when content from two surfaces is present at once.
+    Note that the fake agent's `conjunction` profile does *not* exercise this
+    from a search: its needles are literals no seed contains, so it is reachable
+    only from the integration tests that write them by hand. Use
+    `compositional` for anything measuring the search.
     """
 
     name = "split_across_surfaces"
