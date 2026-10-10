@@ -150,3 +150,13 @@ def test_trials_needed_also_grows_approaching_the_threshold_from_below():
 
 def test_trials_needed_is_capped():
     assert trials_needed(0.301, threshold=0.3, max_trials=50) == 50
+
+
+def test_a_bound_just_inside_the_threshold_does_not_render_as_the_threshold():
+    """`wilson(0, 9)` has hi = 0.2991, which is decisively below 30% -- but at
+    two decimals the message read "decisively below 30% (hi=0.30)", a
+    contradiction, and a bound sitting just inside the threshold is precisely
+    the case a reader goes looking for."""
+    decision = should_stop(estimate(0, 9), threshold=DEFAULT_THRESHOLD, min_trials=5)
+    assert decision.stop
+    assert "hi=0.299" in decision.reason

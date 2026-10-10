@@ -58,6 +58,20 @@ class FindingGroup(BaseModel):
         """Distinct behavioural routes that reached this bug."""
         return sorted({m.coverage_signature for m in self.members})
 
+    @property
+    def distinct_payloads(self) -> int:
+        """How many genuinely different payloads the group holds.
+
+        Not the same as `size`. Two search candidates that shrink to the same
+        minimal payload are two members and one payload, which is the normal
+        outcome and worth saying: the search reached one bug twice by different
+        routes, and reduction collapsed both to the same thing. Reporting the
+        member count as a payload count overstates what a reader would have to
+        look at. Observed on the Phase-3 gate, where a 214-byte candidate and a
+        430-byte one both reduced to the identical 9 bytes.
+        """
+        return len({tuple(sorted(m.payloads.items())) for m in self.members})
+
 
 def group_key(finding: Finding) -> str:
     return digest({"actions": sorted(finding.action_keys)}, prefix="grp")

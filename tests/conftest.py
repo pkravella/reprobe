@@ -17,6 +17,10 @@ import pytest
 _LANES = {
     "docker": ("REPROBE_DOCKER_TESTS", "needs a Docker daemon"),
     "agent": ("REPROBE_AGENT_TESTS", "spends real agent/API budget"),
+    # Free, but minutes rather than seconds: a statistical claim needs hundreds
+    # of real trials. The per-PR `integration` job has a 25-minute budget that
+    # also builds four images, so these run in the nightly soak instead.
+    "slow": ("REPROBE_SLOW_TESTS", "takes minutes of real trials"),
 }
 
 

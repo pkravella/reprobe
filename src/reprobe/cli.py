@@ -210,7 +210,9 @@ def soak(
     model: Annotated[str, typer.Option()] = "reprobe-fake",
     out: Annotated[Path, typer.Option()] = Path(".reprobe"),
     seed: Annotated[int, typer.Option()] = 0,
-    max_usd: Annotated[float, typer.Option()] = 0.0,
+    max_usd: Annotated[
+        float, typer.Option(help="Dollar cap; the default of 0 means it must cost nothing")
+    ] = 0.0,
     agent_profile: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Phase-1 exit gate: run N trials and fail if any trial hit a harness error.
@@ -406,7 +408,8 @@ def triage(
         finding = group.representative
         typer.echo(
             f"  {finding.title()}  -{finding.reduction:.0%} bytes"
-            f"  ({group.size} payload(s), {len(group.coverage_signatures)} route(s))"
+            f"  ({group.size} candidate(s), {group.distinct_payloads} distinct payload(s), "
+            f"{len(group.coverage_signatures)} route(s))"
         )
         if finding.env_removed:
             typer.echo(f"      {finding.env_removed_summary()}")
