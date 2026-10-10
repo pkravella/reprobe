@@ -49,6 +49,12 @@ def test_env_allowlist_is_minimal():
     assert CodexCliAdapter().env_allowlist == ("OPENAI_API_KEY", "OPENAI_BASE_URL")
 
 
+def test_required_env_is_the_api_key_and_nothing_optional():
+    adapter = CodexCliAdapter()
+    assert adapter.required_env == ("OPENAI_API_KEY",)
+    assert set(adapter.required_env) <= set(adapter.env_allowlist)
+
+
 # --- the command line -----------------------------------------------------
 
 
