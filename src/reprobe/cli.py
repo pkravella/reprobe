@@ -18,7 +18,8 @@ from reprobe import __version__
 from reprobe.agents import available, get_adapter
 from reprobe.budget import BudgetCaps, BudgetLedger
 from reprobe.coverage import SIGNAL_GROUPS
-from reprobe.errors import BudgetExceeded, ReprobeError
+from reprobe.errors import BudgetExceeded, ConfigError, ReprobeError
+from reprobe.export.gha import DEFAULT_SCHEDULE
 from reprobe.sandbox.docker_sandbox import DockerSandbox
 from reprobe.scenario import load_scenario
 from reprobe.stats import DEFAULT_THRESHOLD
@@ -449,9 +450,21 @@ def export(
     allow_unpinned: Annotated[
         bool, typer.Option(help="Export findings with no agent version, model or digest")
     ] = False,
+    workflow: Annotated[
+        Path | None,
+        typer.Option(help="Also write a GitHub Actions workflow here (it spends agent budget)"),
+    ] = None,
+    reprobe_ref: Annotated[
+        str | None,
+        typer.Option(help="Reprobe tag, branch or commit the workflow builds from"),
+    ] = None,
+    schedule: Annotated[str, typer.Option(help="The workflow's cron schedule")] = (
+        DEFAULT_SCHEDULE
+    ),
 ) -> None:
-    """Export findings as a self-contained pytest suite."""
+    """Export findings as a self-contained pytest suite, and optionally a workflow."""
     from reprobe.dedupe import dedupe
+    from reprobe.export.gha import render_workflow
     from reprobe.export.pytest_export import OPT_IN_ENV, write_suite
     from reprobe.finding import Finding
 
@@ -479,6 +492,23 @@ def export(
 
     chosen = [g.representative for g in dedupe(findings)] if representatives_only else findings
     try:
+        workflow_text = None
+        if workflow is not None:
+            # The workflow runs from the repository root, which is where this
+            # is run from; render it before writing anything, so a refusal
+            # leaves no half-written suite behind.
+            root = Path.cwd().resolve()
+            if not dest.resolve().is_relative_to(root):
+                raise ConfigError(
+                    f"the suite {dest} must be inside the repository ({root}) for the "
+                    "workflow to find it; run export from the repository root"
+                )
+            workflow_text = render_workflow(
+                chosen,
+                schedule=schedule,
+                suite_dir=dest.resolve().relative_to(root).as_posix(),
+                reprobe_ref=reprobe_ref,
+            )
         scenarios = {load_scenario(source).name: source}
         written = write_suite(
             chosen,
@@ -492,6 +522,10 @@ def export(
         raise typer.Exit(2) from exc
 
     tests = len([p for p in written if p.name.startswith("test_")])
+    if workflow is not None and workflow_text is not None:
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text(workflow_text, encoding="utf-8")
+        typer.echo(f"workflow {workflow} (spends agent budget on its schedule: {schedule})")
     typer.echo(
         f"suite    {dest} ({tests} test(s) from {len(findings)} finding(s))\n\n"
         f"next: {OPT_IN_ENV}=1 uv run pytest {dest} -v\n"
@@ -519,7 +553,6 @@ def verify(
     ] = None,
 ) -> None:
     """Re-measure every exported finding and report whether each is fixed."""
-    from reprobe.errors import ConfigError
     from reprobe.export.pytest_export import FINDINGS_DIR, SCENARIOS_DIR, suite_entries
     from reprobe.verify import FindingRunner, check_decidable
 

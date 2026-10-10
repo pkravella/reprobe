@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -9,7 +11,7 @@ from tests.support.findings import make_finding
 from tests.support.results import clean_result, leaky_result
 
 runner = CliRunner()
-MINIMAL = "tests/data/scenarios/minimal/scenario.yaml"
+MINIMAL = str(Path("tests/data/scenarios/minimal/scenario.yaml").resolve())
 MINIMAL_HASH = load_scenario(MINIMAL).scenario_hash
 
 
@@ -266,4 +268,89 @@ def test_export_of_an_unknown_run_says_so_without_a_traceback(tmp_path):
     result = _export(tmp_path, "--run", "run_nope")
     assert result.exit_code == 2
     assert "run_nope" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+# --- export --workflow ----------------------------------------------------------
+
+
+def test_export_writes_a_workflow_only_when_asked(tmp_path, monkeypatch):
+    """A scheduled workflow spends real agent budget every week. Writing one
+    into somebody's .github unasked is not a default."""
+    monkeypatch.chdir(tmp_path)
+    _store_with(tmp_path, [_finding()])
+    assert runner.invoke(cli.app, ["export", "store", "--dest", "suite"]).exit_code == 0
+    assert not (tmp_path / ".github").exists()
+
+
+def test_export_writes_a_workflow_that_runs_the_suite_it_just_wrote(tmp_path, monkeypatch):
+    import yaml
+
+    monkeypatch.chdir(tmp_path)
+    _store_with(tmp_path, [_finding()])
+    result = runner.invoke(
+        cli.app,
+        [
+            "export",
+            "store",
+            "--dest",
+            str(tmp_path / "tests" / "reprobe"),
+            "--workflow",
+            ".github/workflows/reprobe.yml",
+            "--reprobe-ref",
+            "v0.1.0",
+            "--schedule",
+            "0 3 * * *",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    doc = yaml.safe_load((tmp_path / ".github/workflows/reprobe.yml").read_text())
+    job = doc["jobs"]["reprobe"]
+    assert job["env"]["REPROBE_SUITE"] == "tests/reprobe"  # relative to the repo root
+    assert doc[True]["schedule"] == [{"cron": "0 3 * * *"}]
+    assert "workflow" in result.output
+
+
+def test_export_refuses_a_suite_outside_the_repository(tmp_path, monkeypatch):
+    """The workflow runs from the repository root; a suite elsewhere is a path
+    the checkout will never contain."""
+    (tmp_path / "repo").mkdir()
+    monkeypatch.chdir(tmp_path / "repo")
+    _store_with(tmp_path, [_finding()])
+    result = runner.invoke(
+        cli.app,
+        [
+            "export",
+            str(tmp_path / "store"),
+            "--dest",
+            str(tmp_path / "elsewhere"),
+            "--workflow",
+            ".github/workflows/reprobe.yml",
+            "--reprobe-ref",
+            "v0.1.0",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "inside the repository" in result.output
+    assert not (tmp_path / "elsewhere").exists()
+
+
+def test_export_reports_a_workflow_refusal_without_a_traceback(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _store_with(tmp_path, [_finding()])
+    result = runner.invoke(
+        cli.app,
+        [
+            "export",
+            "store",
+            "--dest",
+            "suite",
+            "--workflow",
+            ".github/workflows/r.yml",
+            "--reprobe-ref",
+            "bad ref",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "ref" in result.output
     assert isinstance(result.exception, SystemExit)
