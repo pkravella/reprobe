@@ -40,6 +40,7 @@ class ClaudeCodeAdapter:
     #: Only the agent's own credentials. The sandbox passes nothing else, so
     #: anything missing here simply does not exist inside a trial.
     env_allowlist: tuple[str, ...] = ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL")
+    required_env: tuple[str, ...] = ("ANTHROPIC_API_KEY",)
     infra_hosts: tuple[str, ...] = ("api.anthropic.com",)
 
     #: `--max-budget-usd` caps spend inside the CLI itself, so the ledger has a

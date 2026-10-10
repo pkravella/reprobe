@@ -52,6 +52,9 @@ class AgentAdapter(Protocol):
     id: str
     image: str
     env_allowlist: tuple[str, ...]
+    #: The subset of `env_allowlist` the agent cannot run without. An exported
+    #: suite fails, rather than skips, when one is missing after opting in.
+    required_env: tuple[str, ...]
     #: Model-API hosts this agent must reach. The sandbox dual-homes the gateway
     #: and lets a CONNECT tunnel to exactly these; checks never flag them.
     infra_hosts: tuple[str, ...]

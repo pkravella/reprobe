@@ -98,6 +98,15 @@ def test_env_allowlist_is_minimal_and_explicit():
     assert "PATH" not in allow and "HOME" not in allow
 
 
+def test_required_env_is_the_api_key_and_nothing_optional():
+    """What an exported suite refuses to run without. `ANTHROPIC_BASE_URL` is
+    allowed through but optional, so it must not be required -- and the draft's
+    `env_allowlist[:1]` got this right only by tuple order."""
+    adapter = ClaudeCodeAdapter()
+    assert adapter.required_env == ("ANTHROPIC_API_KEY",)
+    assert set(adapter.required_env) <= set(adapter.env_allowlist)
+
+
 def test_the_adapter_names_its_image():
     assert ClaudeCodeAdapter().image == "reprobe/claude-code:dev"
 

@@ -83,6 +83,11 @@ def test_no_host_environment_is_inherited():
     assert FakeAgentAdapter().env_allowlist == ()
 
 
+def test_it_requires_no_environment_to_run():
+    # So an exported fake-agent suite runs anywhere Docker does, with no key.
+    assert FakeAgentAdapter().required_env == ()
+
+
 def test_it_needs_no_login_and_caps_no_spend():
     adapter = FakeAgentAdapter()
     assert adapter.login_command() is None
