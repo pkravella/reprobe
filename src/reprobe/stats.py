@@ -1,4 +1,14 @@
-"""R9: reproduction rate with a 95% confidence interval.
+"""R9: reproduction rate with a Wilson confidence interval.
+
+`DEFAULT_Z = 1.96` is nominally 95%, and that is a per-fixed-sample property.
+`should_stop` makes the sample size depend on what the sample showed, which is
+optional stopping, and that degrades two-sided coverage -- measured at 88.5%
+for a true rate of 0.35 against a 0.30 threshold, which is exactly the region
+the product cares about. The claim the system actually makes is one-sided, the
+decision `lo >= threshold`, and that decision is conservative: 2% of
+true-0.20 payloads are accepted, 7% at 0.25, against 31% of genuine true-0.35
+ones. See `docs/benchmark-v0.1.md`. Do not describe the output as a calibrated
+95% interval.
 
 Wilson, not Wald: with the small n we can afford (5-40 agent runs) and rates
 near 0 or 1, Wald intervals go out of bounds and understate uncertainty. Wilson
@@ -142,3 +152,15 @@ def trials_needed(
         if est.decisive_above(threshold) or est.decisive_below(threshold):
             return n
     return max_trials
+
+
+__all__ = [
+    "DEFAULT_THRESHOLD",
+    "DEFAULT_Z",
+    "RateEstimate",
+    "StopDecision",
+    "estimate",
+    "should_stop",
+    "trials_needed",
+    "wilson",
+]

@@ -443,6 +443,43 @@ One spurious keep was observed against 0.45 expected. The lever is
 environment needs something it does not is misleading but conservative, where
 the opposite would call a real prerequisite irrelevant.
 
+### Two configurations in which the gate could never have passed
+
+Found during the Phase-3 closeout, by reading `should_stop` against the
+threshold rather than against its own defaults. Both spend the whole trial
+budget and report nothing, and nothing in the output distinguishes that from a
+scenario the agent genuinely resisted. Both are refused before the first trial
+now.
+
+**The trial cap.** A payload has to clear the threshold on a *lower* bound, and
+a lower bound takes trials. Even one that reproduces every single time:
+
+| threshold | 0.30 | 0.50 | 0.70 | 0.80 | 0.90 | 0.95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| trials before a 100% payload can clear it | 2 | 4 | 9 | 16 | 35 | 73 |
+
+So `--threshold 0.9 --max-trials 20` is not a strict run, it is an impossible
+one: 20 of 20 successes is a lower bound of 0.839.
+
+**The width rule, which is the one that actually bit.** `should_stop` gives up
+on an interval once it is `target_width` wide, and for an always-reproducing
+payload that happens when the lower bound reaches `1 - target_width`. Raising
+the trial cap does not help:
+
+| n | 9 | 12 | 20 | 35 |
+| --- | --- | --- | --- | --- |
+| lower bound at n of n | 0.701 | 0.757 | 0.839 | 0.901 |
+| width | 0.299 | 0.243 | 0.161 | 0.099 |
+| `should_stop` at threshold 0.9, width 0.25 | continue | **stop: width** | — | — |
+
+It stops at 12 trials with a lower bound of 0.757 and would have been decisive
+at 35. The condition is `threshold > 1 - target_width`.
+
+The width rule could be made threshold-aware instead of being guarded against
+— it cannot currently tell "this will never become decisive" from "this is not
+decisive yet". That is a change to behaviour both the Phase-2 and Phase-3 gates
+were measured against, so it is written down rather than done.
+
 ### What this does not show
 
 - **The 96% reduction is mostly a property of the profile, not the shrinker's

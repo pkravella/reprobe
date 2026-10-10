@@ -386,23 +386,35 @@ def triage(
         raise typer.Exit(2)
     scenario = load_scenario(scenario_path or Path(str(recorded)))
 
-    report = run_triage(
-        run_id,
-        store=store,
-        scenario=scenario,
-        agent_id=agent,
-        model=model,
-        sandbox=DockerSandbox(infra_hosts=adapter.infra_hosts),
-        config=TriageConfig(
-            threshold=threshold,
-            min_trials=min_trials,
-            max_trials=max_trials,
-            caps=BudgetCaps(max_usd=max_usd, max_trials=100_000, max_concurrency=1),
-            shrink_env=shrink_env,
-            agent_profile=agent_profile,
-            infra_hosts=adapter.infra_hosts,
-        ),
-    )
+    try:
+        report = run_triage(
+            run_id,
+            store=store,
+            scenario=scenario,
+            agent_id=agent,
+            model=model,
+            sandbox=DockerSandbox(infra_hosts=adapter.infra_hosts),
+            config=TriageConfig(
+                threshold=threshold,
+                min_trials=min_trials,
+                max_trials=max_trials,
+                caps=BudgetCaps(max_usd=max_usd, max_trials=100_000, max_concurrency=1),
+                shrink_env=shrink_env,
+                agent_profile=agent_profile,
+                infra_hosts=adapter.infra_hosts,
+            ),
+        )
+    except ReprobeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    if not report.candidates:
+        typer.echo(
+            f"run {run_id} has no candidates to triage. `reprobe fuzz` records one per "
+            "distinct payload that violated, so either the search found nothing or it was "
+            "never run against this store."
+        )
+        raise typer.Exit(0)
 
     for group in report.groups:
         finding = group.representative
@@ -417,11 +429,19 @@ def triage(
         typer.echo(f"  dropped {drop.candidate_id}: {drop.reason}")
 
     typer.echo(
-        f"\n{len(report.findings)} finding(s) in {len(report.groups)} group(s), "
-        f"{len(report.dropped)} dropped, median reduction "
-        f"{report.median_reduction:.0%}, ${report.cost_usd:.2f} spent\n"
-        f"next: reprobe export {out} --run {run_id}"
+        f"\n{len(report.findings)} finding(s) in {len(report.groups)} group(s) from "
+        f"{report.candidates} candidate(s), {len(report.dropped)} dropped, median reduction "
+        f"{report.median_reduction:.0%}, ${report.cost_usd:.2f} spent"
     )
+    if report.harness_failures:
+        # Not a footnote: every rate above was measured on the trials that did
+        # not break, so a high count means the numbers describe a subsample.
+        typer.echo(
+            f"warning: {report.harness_failures} harness failure(s) during triage; the rates "
+            "above are measured on the trials that survived",
+            err=True,
+        )
+    typer.echo(f"next: reprobe export {out} --run {run_id}")
 
 
 @app.command()

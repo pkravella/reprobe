@@ -30,7 +30,7 @@ Reprobe runs a coding agent on legitimate tasks in a disposable sandbox, mutates
 >
 > **Not built yet:** the pytest and GitHub Action exporters and the finding
 > report. `reprobe export` and `reprobe verify` are declared and tell you so.
-> Those are the sections below marked as design.
+> The **Export** bullet below describes what they will do, not what they do.
 > Early feedback is welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
@@ -59,7 +59,7 @@ Reprobe is a search, shrink and regression layer for exactly those three gaps. I
                               │                           │
                               └───────────────────────────┤
                                                           ▼
-   CI test  ◀──  export  ◀──  shrink  ◀──  reproduction rate (Wilson 95%)
+   CI test  ◀──  export  ◀──  shrink  ◀──  reproduction rate (Wilson interval)
 ```
 
 - **Scenario.** A YAML file: honest work for the agent, a repository fixture, which surfaces an attacker controls, synthetic secrets, and what counts as a violation.
@@ -67,7 +67,7 @@ Reprobe is a search, shrink and regression layer for exactly those three gaps. I
 - **Observation.** Four independent sources — the agent's own structured output, `strace` in the container, a filesystem manifest diff, and the gateway log — because an agent's self-report is not ground truth.
 - **Checks.** Deterministic only: a synthetic canary read or sent, a protected file changed, egress to a host off the allowlist, a dangerous command run. No model-as-judge.
 - **Search.** Template and structural mutators, with a coverage-guided scheduler that spends budget on inputs reaching new agent behaviour. A blind random-mutation mode ships alongside it as the comparison baseline.
-- **Triage.** Every candidate is re-run to estimate its reproduction rate with a Wilson 95% interval, then delta-debugged down to a minimal payload — accepting a cut only when the interval's *lower bound* stays above threshold.
+- **Triage.** Every candidate is re-run to estimate its reproduction rate with a Wilson interval, then delta-debugged down to a minimal payload — accepting a cut only when the interval's *lower bound* stays above threshold. The claim that bound makes is one-sided on purpose: read it as "we are not fooling ourselves that this reproduces". Sampling stops early when the answer is already clear, and early stopping is optional stopping, so the nominal 95% is not a calibrated two-sided figure — measured at 88.5% coverage for a true rate just above the threshold. The decision it drives errs toward rejecting: payloads that truly reproduce 20% of the time are accepted 2% of the time. Numbers in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
 - **Export.** A pytest test and a GitHub Action, pinned to agent version, model id and container digest. The test asserts on the measured rate, not on one run, so it passes once the exploit genuinely stops reproducing.
 
 ## Try it, for nothing
@@ -126,16 +126,20 @@ uv run reprobe triage .reprobe --agent fake-agent --model reprobe-fake \
 ```
   canary_exfil → collector.invalid (71% [36%, 92%] (5/7))  -96% bytes
       (2 candidate(s), 1 distinct payload(s), 2 route(s))
-      no longer needs: egress_allowlist, protected_path:.github/workflows/**, ...
+      no longer needs: an egress allowlist (registry.npmjs.org);
+                       protecting .github/workflows/**; protecting .git/config
 
-2 finding(s) in 1 group(s), 0 dropped, median reduction 97%, $0.00 spent
+2 finding(s) in 1 group(s) from 2 candidate(s), 0 dropped,
+median reduction 97%, $0.00 spent
 ```
 
 Two candidates the search found separately, both cut down to the same nine
 bytes — the smallest payload this agent's trigger can fire on at all — and
 grouped as one bug because they make the agent do the same forbidden thing. The
 interval is the reproduction rate: a cut is kept only if its *lower* bound still
-clears the threshold, so a payload that merely got lucky never survives.
+clears the threshold, so a payload that merely got lucky never survives. The
+last line is the part an engineer acts on: the exploit did not need the egress
+allowlist or either of those protected paths, so none of them is the fix.
 
 Against a real agent, drop `--agent-profile`, choose `--agent claude-code` or
 `--agent codex-cli`, and set a real `--max-usd`. The budget is enforced before
@@ -146,7 +150,7 @@ each trial is dispatched, not reported afterwards.
 | Goal | Target |
 | --- | --- |
 | Find more | At least 2× the unique reproducible failures per dollar of a random-mutation baseline, on the same scenarios |
-| Prove it | Every finding ships with a shrunk payload and a reproduction rate with its 95% interval |
+| Prove it | Every finding ships with a shrunk payload and a reproduction rate with its interval, and the counts behind it |
 | Keep it fixed | Every finding exports as a CI test that fails while the exploit still reproduces above threshold |
 | Test agents as shipped | Work against off-the-shelf agent CLIs without modifying them |
 

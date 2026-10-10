@@ -160,3 +160,12 @@ def test_a_bound_just_inside_the_threshold_does_not_render_as_the_threshold():
     decision = should_stop(estimate(0, 9), threshold=DEFAULT_THRESHOLD, min_trials=5)
     assert decision.stop
     assert "hi=0.299" in decision.reason
+
+
+def test_the_module_exports_only_its_own_names():
+    """Every other Phase-3 module declares `__all__`; without one here, `math`
+    and `dataclass` were part of the public surface."""
+    import reprobe.stats as mod
+
+    assert "math" not in mod.__all__
+    assert set(mod.__all__) <= set(dir(mod))

@@ -62,6 +62,10 @@ class ShrinkResult(BaseModel):
     shrunk_bytes: int
     estimate: RateEstimate
     steps: int = 0
+    #: Diagnostic, not an accounting total. The Confirmer cache returns the
+    #: original measurement's `cost_usd` on a hit, and the shrinker's own
+    #: baseline is usually a hit, so this double-counts it. For money, read the
+    #: `BudgetLedger`.
     cost_usd: float = 0.0
 
     @property
@@ -72,6 +76,10 @@ class ShrinkResult(BaseModel):
 
     def to_record(self) -> dict[str, Any]:
         return {
+            # Without this a stored trajectory cannot be matched to the
+            # candidate it reduced, which is the whole reason to store it.
+            "candidate_id": self.original.id,
+            "shrunk_id": self.shrunk.id,
             "original_bytes": self.original_bytes,
             "shrunk_bytes": self.shrunk_bytes,
             "reduction": self.reduction,
@@ -283,6 +291,17 @@ class EnvShrinkResult(BaseModel):
     removed: list[str]
     removed_describe: list[str]
     estimate: RateEstimate
+    #: One confirmation per knob plus a baseline. Measured on the Phase-3 gate,
+    #: that is 34% of a candidate's trials -- a share a caller summing only the
+    #: payload shrink's cost reports as free.
+    #:
+    #: Accurate here, because `shrink_environment` asks about a different
+    #: scenario every time and so never hits a Confirmer cache. **Do not add it
+    #: to `ShrinkResult.cost_usd` to get a total**: a cached Confirmation
+    #: reports the *original* measurement's cost, so the payload shrinker's
+    #: figure already includes its baseline's. Ask the `BudgetLedger` for a
+    #: total -- it is the only thing that counts money once.
+    cost_usd: float = 0.0
 
     def summary(self) -> str:
         if not self.removed:
@@ -360,18 +379,23 @@ def shrink_environment(
     current = scenario
     removed: list[str] = []
     describes: list[str] = []
-    best = confirm_with(current, candidate).estimate
+    baseline = confirm_with(current, candidate)
+    best = baseline.estimate
+    cost = baseline.cost_usd
 
     # Nothing to narrow about a finding that does not hold in the first place,
     # and one question is cheaper than one per knob to learn the same thing.
     if best.lo < threshold:
-        return EnvShrinkResult(scenario=scenario, removed=[], removed_describe=[], estimate=best)
+        return EnvShrinkResult(
+            scenario=scenario, removed=[], removed_describe=[], estimate=best, cost_usd=cost
+        )
 
     for knob in env_knobs(scenario, candidate.payloads):
         # No `if not reduced.surfaces` guard: see `_require_payloads` for why a
         # narrowed scenario cannot run out of attacker-controlled surfaces.
         reduced = knob.apply(current)
         result = confirm_with(reduced, candidate)
+        cost += result.cost_usd
         if result.estimate.lo >= threshold:
             current = reduced
             removed.append(knob.id)
@@ -379,7 +403,11 @@ def shrink_environment(
             best = result.estimate
 
     return EnvShrinkResult(
-        scenario=current, removed=removed, removed_describe=describes, estimate=best
+        scenario=current,
+        removed=removed,
+        removed_describe=describes,
+        estimate=best,
+        cost_usd=cost,
     )
 
 

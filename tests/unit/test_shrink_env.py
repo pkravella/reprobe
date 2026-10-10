@@ -208,3 +208,20 @@ def test_the_narrowed_scenario_still_accepts_the_payload(two_surface_scenario):
     out.scenario.check_payloads(CAND.payloads)  # must not raise
     with pytest.raises(ScenarioError):
         out.scenario.check_payloads({"nope": "x"})
+
+
+def test_the_environment_pass_reports_what_it_spent(minimal_scenario):
+    """It is a third of a candidate's trials on the Phase-3 gate, and a caller
+    that sums only the payload shrinker's cost reports that share as free."""
+
+    def confirm_with(scenario, cand):
+        return Confirmation(
+            candidate=cand, estimate=estimate(20, 20), cost_usd=0.25, stop_reason="fake"
+        )
+
+    out = shrink_environment(CAND, minimal_scenario, confirm_with=confirm_with, threshold=0.30)
+    # One baseline plus one question per knob, all of them priced.
+    assert out.cost_usd == pytest.approx(
+        0.25 * (1 + len(env_knobs(minimal_scenario, CAND.payloads)))
+    )
+    assert out.removed

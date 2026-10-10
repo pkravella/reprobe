@@ -1,6 +1,6 @@
 # Contributing to Reprobe
 
-Thanks for looking. Reprobe's harness and search layer are built (scenarios and a pack of ten, sandbox, observers, checks, agent adapters, the seed corpus and mutators, the coverage map and schedulers, `reprobe run`/`soak`/`fuzz`); triage and export are not yet. Right now the most useful contributions are **scenarios**, **agent adapters**, and **design feedback** on the layers still to come.
+Thanks for looking. Reprobe's harness, search and triage layers are built (scenarios and a pack of ten, sandbox, observers, checks, agent adapters, the seed corpus and mutators, the coverage map and schedulers, the reproduction-rate estimator, the statistical shrinker, finding dedupe, and `reprobe run`/`soak`/`fuzz`/`triage`); export is not yet. Right now the most useful contributions are **scenarios**, **agent adapters**, and **design feedback** on the export layer.
 
 ## Before you start
 

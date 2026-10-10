@@ -10,6 +10,27 @@ Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end
 
 ### Fixed
 
+- A finding now reports what it actually cost. The figure was summed from the individual
+  measurements, which double-counts: asking about a payload that has already been measured returns
+  the earlier answer, cost included. Measured, a finding claimed $1.42 against a ledger that had
+  spent $1.28. It is read off the budget ledger now, which is the only thing that counts money
+  once, and it includes the environment pass — a third of a candidate's trials, previously
+  reported as free.
+- Harness failures during triage are counted and reported. A reproduction rate measured while a
+  third of the trials were crashing is a rate on whatever survived, and that went unsaid.
+- A triage run with nothing to triage says so, instead of reporting that it found no findings.
+  "The search produced no candidates" and "every candidate was measured and dropped" are different
+  facts and the second is the only one worth reading as a result.
+- A threshold no sample could ever clear is refused before the first trial rather than after the
+  whole budget. Asking for a 90% reproduction rate while allowing 20 trials cannot succeed — a
+  payload that reproduced every single time would still fall short — and neither can asking for one
+  while sampling stops as soon as the interval is 25 percentage points wide, whatever the trial
+  budget. Both used to spend everything and report nothing, which reads exactly like a real
+  negative result.
+- The plain-English description of which prerequisites an exploit turned out not to need now
+  reaches the report. It was being built for every one of them and then dropped in favour of their
+  internal names, so the output said `egress_allowlist` where it had "an egress allowlist
+  (registry.npmjs.org)" available.
 - `--max-usd 0` now forbids spending, which is what it has always claimed to do. The check was
   written so that a cap of zero switched the dollar cap off altogether, meaning the one value
   anyone would reach for to say "this must not cost me anything" was the only value that allowed
@@ -59,6 +80,11 @@ Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end
 
 ### Changed
 
+- Documentation no longer describes the reproduction rate as a 95% interval without qualification.
+  Sampling stops as soon as the answer is clear, and stopping early on the basis of what you have
+  seen so far costs you the nominal coverage: measured at 88.5% for a true rate just above the
+  threshold, which is the region that matters most. The claim the tool actually makes is one-sided
+  — that the rate is above the threshold — and that claim errs toward saying no.
 - Tests that need hundreds of real trials to make a statistical claim now run in the nightly soak rather than on every pull request. Measured: the two checks that verify the reproduction-rate estimator covers the test agent's configured rate, and that the shrinker reaches its configured minimal payload, take 12m33s between them — against a 25-minute budget for the whole per-PR container suite including four image builds. They are free, just not quick.
 - The scheduler's exploration ramp now stops short of abandoning the corpus. Going all the way to pure exploration costs about half the performance on a target that needs two mutations combined, because such a search looks stuck right up until it pays and a search that has given up on its corpus gives up exactly then.
 - The coverage-guided scheduler now explores more when it stops getting anywhere. While it is finding new behaviour or new violations it spends most of its budget mutating what already worked, as before; once neither has happened for a while it raises the share of fresh seeds, reaching full exploration if the corpus never pays off again. Found by the Phase-2 gate: on scenarios where no mutation could reach the target — the payload's position is fixed by the surface template, so there was nothing to climb — a fixed-rate guided search drew a sixth as many fresh seeds as the blind baseline and lost to it, scoring zero where the baseline scored three to eight. A search with nothing left to climb should explore, and stuck it should match the baseline rather than trail it.
