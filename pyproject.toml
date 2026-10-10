@@ -90,9 +90,10 @@ pythonpath = ["."]
 markers = [
     "docker: needs a Docker daemon; skipped unless REPROBE_DOCKER_TESTS=1",
     "agent: spends real agent/API budget; skipped unless REPROBE_AGENT_TESTS=1",
+    "slow: free but takes minutes of real trials; skipped unless REPROBE_SLOW_TESTS=1",
     "reprobe: a Reprobe-generated regression test",
 ]
-addopts = "-m 'not docker and not agent'"
+addopts = "-m 'not docker and not agent and not slow'"
 
 [dependency-groups]
 dev = [

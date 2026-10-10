@@ -38,6 +38,15 @@ jobs:
             --runs ${{ github.event.inputs.runs || 100 }} \
             --agent fake-agent --model reprobe-fake --max-usd 0
 
+      # Statistical claims that need hundreds of real trials: the Confirmer's
+      # interval covering the fake agent's configured rate, and the shrinker
+      # reaching its configured minimal payload. Free, but minutes rather than
+      # seconds, so they are excluded from the per-PR job and run here.
+      - name: slow lane (free, hundreds of trials)
+        run: |
+          REPROBE_DOCKER_TESTS=1 REPROBE_SLOW_TESTS=1 \
+            uv run pytest tests/integration -v -m slow
+
       # Adapter drift against the live Claude Code CLI is the one thing the free
       # lane cannot see, so check it with a handful of trials -- only on the
       # schedule, and only if a key is configured. A paid soak every night would

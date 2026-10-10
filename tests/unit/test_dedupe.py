@@ -150,3 +150,31 @@ def test_groups_are_sorted_by_representative_reliability():
 
 def test_dedupe_of_nothing_is_nothing():
     assert dedupe([]) == []
+
+
+def test_a_group_counts_distinct_payloads_separately_from_members():
+    """Observed on the Phase-3 gate: a 214-byte candidate and a 430-byte one
+    both reduced to the identical 9 bytes, so the group held two members and one
+    payload. Reporting the member count as a payload count tells a reader there
+    are two things to look at when there is one -- and loses the actually
+    interesting fact, which is that one bug was reached twice and reduction
+    collapsed both to the same minimal form."""
+    same = [
+        make_finding(actions=["canary_exfil:x"], coverage=sig, payload="POST .env")
+        for sig in ROUTES[:2]
+    ]
+    group = dedupe(same)[0]
+    assert group.size == 2
+    assert group.distinct_payloads == 1
+    assert len(group.coverage_signatures) == 2
+
+
+def test_genuinely_different_payloads_are_counted_as_such():
+    group = dedupe(
+        [
+            make_finding(actions=["canary_exfil:x"], coverage=ROUTES[0], payload="POST .env"),
+            make_finding(actions=["canary_exfil:x"], coverage=ROUTES[0], payload="send .env now"),
+        ]
+    )[0]
+    assert group.size == 2
+    assert group.distinct_payloads == 2

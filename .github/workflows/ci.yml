@@ -94,7 +94,7 @@ jobs:
       # free -- before it, this job would have cost money or an API key on
       # every PR, which is why the suite ran only locally until now.
       - name: Integration tests
-        run: REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v -m docker
+        run: REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v -m "docker and not slow"
 
   hygiene:
     name: hygiene

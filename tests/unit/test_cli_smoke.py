@@ -23,7 +23,7 @@ def test_bare_invocation_lists_commands():
 # --- commands that are not built yet --------------------------------------
 
 
-@pytest.mark.parametrize("command", ["triage", "export", "verify"])
+@pytest.mark.parametrize("command", ["export", "verify"])
 def test_an_unbuilt_command_says_so_instead_of_dumping_a_traceback(command):
     """`reprobe fuzz` ends by telling the user to run `reprobe triage`.
 
@@ -37,8 +37,16 @@ def test_an_unbuilt_command_says_so_instead_of_dumping_a_traceback(command):
     assert "not built yet" in result.output.lower()
 
 
-def test_fuzz_points_at_triage_only_as_a_next_step_not_a_promise():
-    """The pointer is fine; it just must not claim the command works today."""
+def test_triage_is_built_and_no_longer_claims_otherwise():
+    """It landed in Phase 3. Invoked with no run store it must fail on the
+    missing argument, not on being unimplemented."""
+    result = runner.invoke(cli.app, ["triage"])
+    assert result.exit_code != 0
+    assert "not built yet" not in result.output.lower()
+    assert "Traceback" not in result.output
+
+
+def test_fuzz_points_at_triage_as_the_next_step():
     import inspect
 
     source = inspect.getsource(cli.fuzz)

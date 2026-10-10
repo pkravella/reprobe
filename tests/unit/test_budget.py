@@ -249,3 +249,19 @@ def test_an_unrelated_unknown_model_gets_no_misleading_suggestion():
     with pytest.raises(KeyError) as exc:
         price("some-other-vendor-model", 10, 10)
     assert "Did you mean" not in str(exc.value)
+
+
+def test_a_zero_dollar_cap_forbids_spending_rather_than_disabling_the_cap():
+    """`--max-usd 0` is documented as "it must cost nothing", and the guard
+    `spent >= max_usd and max_usd > 0` did the opposite: at zero the dollar cap
+    switched off entirely, so the one value a user would reach for to forbid
+    spending was the only value that permitted unlimited spending. On a paid
+    agent that is a trap, and `reprobe fuzz`, `run` and `triage` all advertise
+    it in `--help`.
+    """
+    ledger = BudgetLedger(_caps(max_usd=0.0, max_trials=100))
+    ledger.check_can_dispatch()  # nothing spent yet, so the run may start
+    ledger.record(Cost(1000, 100, 0, 0, price("claude-haiku-4-5", 1000, 100)))
+    assert ledger.spent_usd > 0
+    with pytest.raises(BudgetExceeded, match="forbids any spend"):
+        ledger.check_can_dispatch()

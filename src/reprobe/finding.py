@@ -94,6 +94,12 @@ class Finding(BaseModel):
         head = f"{check} → {target}" if target else check
         return f"{head} ({self.rate.summary()})"
 
+    def env_removed_summary(self) -> str:
+        """What the environment turned out not to need, for a report line."""
+        if not self.env_removed:
+            return "every declared prerequisite is load-bearing"
+        return "no longer needs: " + ", ".join(self.env_removed)
+
     def to_record(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
 

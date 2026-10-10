@@ -81,3 +81,8 @@ def test_reduction_of_a_finding_with_no_original_size_is_zero_not_a_crash():
     dividing by zero is not."""
     finding = make_finding(original_bytes=0)
     assert finding.reduction == 0.0
+
+
+def test_env_removed_summary_reads_either_way():
+    assert "egress" in make_finding(env_removed=["egress_allowlist"]).env_removed_summary()
+    assert make_finding().env_removed_summary() == "every declared prerequisite is load-bearing"

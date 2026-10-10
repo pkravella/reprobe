@@ -21,6 +21,7 @@ from reprobe.coverage import SIGNAL_GROUPS
 from reprobe.errors import BudgetExceeded, ReprobeError
 from reprobe.sandbox.docker_sandbox import DockerSandbox
 from reprobe.scenario import load_scenario
+from reprobe.stats import DEFAULT_THRESHOLD
 from reprobe.store import RunStore
 from reprobe.trial import known_profiles, run_trial
 
@@ -112,6 +113,7 @@ def _run_impl(
         {
             "command": "run",
             "scenario": scenario.name,
+            "scenario_path": str(scenario_path.resolve()),
             "scenario_hash": scenario.scenario_hash,
             "agent": agent,
             "model": model,
@@ -208,7 +210,9 @@ def soak(
     model: Annotated[str, typer.Option()] = "reprobe-fake",
     out: Annotated[Path, typer.Option()] = Path(".reprobe"),
     seed: Annotated[int, typer.Option()] = 0,
-    max_usd: Annotated[float, typer.Option()] = 0.0,
+    max_usd: Annotated[
+        float, typer.Option(help="Dollar cap; the default of 0 means it must cost nothing")
+    ] = 0.0,
     agent_profile: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Phase-1 exit gate: run N trials and fail if any trial hit a harness error.
@@ -282,6 +286,7 @@ def fuzz(
         adapter = get_adapter(agent)
         config = FuzzConfig(
             scenario=scenario,
+            scenario_path=scenario_path.resolve(),
             agent_id=agent,
             model=model,
             # Validated inside `fuzz`, which names the known values; the
@@ -338,9 +343,85 @@ def _not_built_yet(command: str, phase: str) -> None:
 
 
 @app.command()
-def triage() -> None:
-    """Estimate reproduction rates and shrink confirmed findings."""
-    _not_built_yet("triage", "Phase 3")
+def triage(
+    out: Annotated[Path, typer.Argument(help="Run store directory")],
+    run: Annotated[str | None, typer.Option(help="Run id; default is the latest")] = None,
+    scenario_path: Annotated[
+        Path | None,
+        typer.Option("--scenario", help="Overrides the path recorded by the run"),
+    ] = None,
+    agent: Annotated[str, typer.Option(help=f"One of: {', '.join(available())}")] = "claude-code",
+    model: Annotated[str, typer.Option(help="Model id passed to the agent")] = "claude-haiku-4-5",
+    threshold: Annotated[
+        float, typer.Option(help="Lower bound of the reproduction rate a finding must clear")
+    ] = DEFAULT_THRESHOLD,
+    min_trials: Annotated[int, typer.Option(help="Trials before a rate may be called")] = 5,
+    max_trials: Annotated[int, typer.Option(help="Trials per confirmation at most")] = 40,
+    max_usd: Annotated[float, typer.Option(help="Dollar cap; 0 means it must cost nothing")] = 50.0,
+    shrink_env: Annotated[
+        bool, typer.Option("--shrink-env/--no-shrink-env", help="Also narrow the scenario")
+    ] = True,
+    agent_profile: Annotated[str | None, typer.Option(help="Fake-agent behaviour profile")] = None,
+) -> None:
+    """Confirm reproduction rates and shrink every candidate from a run."""
+    from reprobe.triage import TriageConfig
+    from reprobe.triage import triage as run_triage
+
+    adapter = get_adapter(agent)
+    if agent_profile is not None and agent_profile not in known_profiles():
+        raise typer.BadParameter(f"unknown profile {agent_profile!r}; known: {known_profiles()}")
+
+    store = RunStore(out)
+    run_id = run or store.latest_run()
+    meta = store.meta(run_id)
+    recorded = meta.get("scenario_path")
+    if scenario_path is None and not recorded:
+        # Older runs, and runs opened by a caller that did not record it. Saying
+        # so beats loading some default scenario and triaging against an
+        # environment the candidates were never found in.
+        typer.echo(
+            f"error: run {run_id} records no scenario path; pass --scenario explicitly",
+            err=True,
+        )
+        raise typer.Exit(2)
+    scenario = load_scenario(scenario_path or Path(str(recorded)))
+
+    report = run_triage(
+        run_id,
+        store=store,
+        scenario=scenario,
+        agent_id=agent,
+        model=model,
+        sandbox=DockerSandbox(infra_hosts=adapter.infra_hosts),
+        config=TriageConfig(
+            threshold=threshold,
+            min_trials=min_trials,
+            max_trials=max_trials,
+            caps=BudgetCaps(max_usd=max_usd, max_trials=100_000, max_concurrency=1),
+            shrink_env=shrink_env,
+            agent_profile=agent_profile,
+            infra_hosts=adapter.infra_hosts,
+        ),
+    )
+
+    for group in report.groups:
+        finding = group.representative
+        typer.echo(
+            f"  {finding.title()}  -{finding.reduction:.0%} bytes"
+            f"  ({group.size} candidate(s), {group.distinct_payloads} distinct payload(s), "
+            f"{len(group.coverage_signatures)} route(s))"
+        )
+        if finding.env_removed:
+            typer.echo(f"      {finding.env_removed_summary()}")
+    for drop in report.dropped:
+        typer.echo(f"  dropped {drop.candidate_id}: {drop.reason}")
+
+    typer.echo(
+        f"\n{len(report.findings)} finding(s) in {len(report.groups)} group(s), "
+        f"{len(report.dropped)} dropped, median reduction "
+        f"{report.median_reduction:.0%}, ${report.cost_usd:.2f} spent\n"
+        f"next: reprobe export {out} --run {run_id}"
+    )
 
 
 @app.command()

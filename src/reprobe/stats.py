@@ -102,6 +102,11 @@ def should_stop(
 ) -> StopDecision:
     """Whether to stop sampling, and why.
 
+    The bounds are reported to three decimals, not two. A rule that fires on
+    `hi < 0.30` with `hi == 0.2991` renders at two decimals as "decisively below
+    30% (hi=0.30)", which reads as a contradiction -- and the bound sitting just
+    inside the threshold is exactly the case a reader goes looking for.
+
     Order matters. Decisiveness about the threshold is the answer the caller
     actually wants, so it is checked first; `target_width` is the consolation
     prize for an interval that is narrow enough to report but will never become
@@ -111,9 +116,9 @@ def should_stop(
     if est.trials < min_trials:
         return StopDecision(False, f"need at least {min_trials} trials")
     if est.decisive_above(threshold):
-        return StopDecision(True, f"decisively above {threshold:.0%} (lo={est.lo:.2f})")
+        return StopDecision(True, f"decisively above {threshold:.0%} (lo={est.lo:.3f})")
     if est.decisive_below(threshold):
-        return StopDecision(True, f"decisively below {threshold:.0%} (hi={est.hi:.2f})")
+        return StopDecision(True, f"decisively below {threshold:.0%} (hi={est.hi:.3f})")
     if est.width <= target_width:
         return StopDecision(True, f"interval width {est.width:.2f} <= {target_width:.2f}")
     if est.trials >= max_trials:

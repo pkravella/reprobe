@@ -64,6 +64,11 @@ class FuzzConfig(BaseModel):
     seed_paths: tuple[Path, ...] = ()
     agent_profile: str | None = None
     otel_endpoint: str | None = None
+    #: Recorded in the run metadata so `reprobe triage` can reload the same
+    #: scenario rather than being told again. A `Scenario` does not carry the
+    #: path it was loaded from, and guessing it from `fixture_dir` would pick a
+    #: file that may not be the one the search ran against.
+    scenario_path: Path | None = None
     #: Baseline arm only: lets the gate run a depth-matched control, so a win
     #: cannot be a mutation-count advantage reported as a guidance one.
     baseline_mutations: int = 1
@@ -151,6 +156,7 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
         {
             "command": "fuzz",
             "scenario": scenario.name,
+            "scenario_path": str(config.scenario_path) if config.scenario_path else None,
             "scenario_hash": scenario.scenario_hash,
             "agent": config.agent_id,
             "model": config.model,

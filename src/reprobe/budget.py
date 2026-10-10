@@ -201,8 +201,22 @@ class BudgetLedger:
         """Raise if any cap is reached. Called before a trial costs anything."""
         with self._lock:
             spent, count = self._tokens.usd, self._trial_count
-        if spent >= self.caps.max_usd and self.caps.max_usd > 0:
-            raise BudgetExceeded(f"usd cap reached: spent ${spent:.4f} of ${self.caps.max_usd:.2f}")
+        if self.caps.max_usd > 0:
+            if spent >= self.caps.max_usd:
+                raise BudgetExceeded(
+                    f"usd cap reached: spent ${spent:.4f} of ${self.caps.max_usd:.2f}"
+                )
+        elif spent > 0:
+            # `--max-usd 0` means what the CLI help says it means: this run must
+            # cost nothing. The guard used to be `spent >= max_usd and max_usd >
+            # 0`, which *disabled* the dollar cap at zero -- so the one value a
+            # user would reach for to forbid spending was the only value that
+            # permitted unlimited spending. The free lanes price at exactly
+            # 0.0, so they still never trip this.
+            raise BudgetExceeded(
+                f"--max-usd 0 forbids any spend, but ${spent:.4f} has been spent; "
+                "pass a positive cap to allow it"
+            )
         if count >= self.caps.max_trials:
             raise BudgetExceeded(f"trials cap reached: {count} of {self.caps.max_trials}")
         elapsed = self._clock() - self._started
