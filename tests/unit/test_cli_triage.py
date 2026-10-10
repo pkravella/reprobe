@@ -5,7 +5,7 @@ from reprobe.loop import CandidateFinding
 from reprobe.mutate import Candidate
 from reprobe.sandbox.fake import FakeSandbox
 from reprobe.store import RunStore
-from tests.support.results import clean_result, leaky_result
+from tests.support.results import broken_result, clean_result, leaky_result
 
 runner = CliRunner()
 MINIMAL = "tests/data/scenarios/minimal/scenario.yaml"
@@ -122,3 +122,52 @@ def test_fuzz_records_the_scenario_path_so_triage_can_find_it(tmp_path, monkeypa
     runner.invoke(cli.app, ["fuzz", MINIMAL, "--out", str(tmp_path), "--trials", "3"])
     store = RunStore(tmp_path)
     assert store.meta(store.latest_run())["scenario_path"].endswith("scenario.yaml")
+
+
+def test_a_run_with_no_candidates_says_there_was_nothing_to_triage(tmp_path, monkeypatch):
+    """ "Triaged 12 candidates and none held up" and "the search found nothing
+    to triage" are different facts, and both rendered as `0 finding(s)`. The
+    second means go back and look at the search."""
+    store = RunStore(tmp_path)
+    store.open_run({"command": "fuzz", "scenario": "minimal", "scenario_path": MINIMAL})
+    result = _invoke(tmp_path, monkeypatch, _sandbox())
+    assert result.exit_code == 0, result.output
+    assert "no candidates" in result.output.lower()
+    assert "0 finding(s)" not in result.output
+
+
+def test_harness_failures_during_triage_are_reported(tmp_path, monkeypatch):
+    """A rate measured while trials were crashing is a rate on a subsample. The
+    Phase-1 gate exists because harness failures matter; triage must not hide
+    them behind a finding that looks clean."""
+    state = {"n": 0}
+
+    def behaviour(spec):
+        state["n"] += 1
+        if state["n"] % 3 == 0:
+            return broken_result()
+        text = "\n".join(spec.payloads.values())
+        return leaky_result(canary=spec.canaries[0].value) if TRIGGER in text else clean_result()
+
+    _run_with_a_candidate(tmp_path)
+    result = _invoke(tmp_path, monkeypatch, FakeSandbox(behaviour), "--max-trials", "10")
+    assert result.exit_code == 0, result.output
+    assert "harness failure" in result.output
+    assert "measured on the trials that survived" in result.output
+
+
+def test_a_clean_run_does_not_warn_about_harness_failures(tmp_path, monkeypatch):
+    _run_with_a_candidate(tmp_path)
+    result = _invoke(tmp_path, monkeypatch, _sandbox(), "--max-trials", "10")
+    assert "harness failure" not in result.output
+
+
+def test_an_unreachable_threshold_is_refused_as_a_sentence(tmp_path, monkeypatch):
+    sandbox = _sandbox()
+    _run_with_a_candidate(tmp_path)
+    result = _invoke(tmp_path, monkeypatch, sandbox, "--threshold", "0.95")
+    assert result.exit_code == 2
+    assert "error:" in result.output
+    assert "no payload could clear" in result.output
+    assert "Traceback" not in result.output
+    assert sandbox.calls == []

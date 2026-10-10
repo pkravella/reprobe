@@ -72,7 +72,8 @@ than after:
   result envelope -- the same shape as on Node 22.
 - `codex`: version probe records `codex-cli 0.160.0`, and `codex exec --help`
   is **byte-identical** to the recording taken on Node 22 and on the host.
-- The full docker integration suite passes (14 tests).
+- The full docker integration suite passes (14 tests, the whole suite as it stood on
+  2026-10-04; it is 52 at the time of writing).
 
 Taking the bump early was deliberate: it changes the container id every
 exported finding is pinned to (R11), and with no findings and no benchmark yet

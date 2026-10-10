@@ -51,6 +51,11 @@ class Finding(BaseModel):
     #: Defaults to the actual size of `payloads`; a disagreeing value is refused.
     shrunk_bytes: int = 0
     env_removed: list[str] = Field(default_factory=list)
+    #: The same prerequisites in English. Kept beside the ids rather than
+    #: derived from them: "an egress allowlist (registry.npmjs.org)" is what
+    #: tells an engineer what to change, and `egress_allowlist` is what a
+    #: machine groups on.
+    env_removed_describe: list[str] = Field(default_factory=list)
     trial_ids: list[str] = Field(default_factory=list)
     cost_usd: float = 0.0
     created_at: float = Field(default_factory=time.time)
@@ -95,10 +100,14 @@ class Finding(BaseModel):
         return f"{head} ({self.rate.summary()})"
 
     def env_removed_summary(self) -> str:
-        """What the environment turned out not to need, for a report line."""
+        """What the environment turned out not to need, for a report line.
+
+        Prefers the English descriptions and falls back to the ids, so a
+        finding written before `env_removed_describe` existed still renders.
+        """
         if not self.env_removed:
             return "every declared prerequisite is load-bearing"
-        return "no longer needs: " + ", ".join(self.env_removed)
+        return "no longer needs: " + "; ".join(self.env_removed_describe or self.env_removed)
 
     def to_record(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

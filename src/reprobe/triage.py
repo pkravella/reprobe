@@ -35,6 +35,7 @@ from __future__ import annotations
 import statistics
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -49,7 +50,7 @@ from reprobe.mutate import Candidate, Mutation
 from reprobe.sandbox import SandboxProtocol
 from reprobe.scenario import Scenario
 from reprobe.shrink import shrink, shrink_environment
-from reprobe.stats import DEFAULT_THRESHOLD, RateEstimate
+from reprobe.stats import DEFAULT_THRESHOLD, RateEstimate, trials_needed
 from reprobe.store import RunStore
 
 
@@ -98,9 +99,66 @@ class TriageReport(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     groups: list[FindingGroup] = Field(default_factory=list)
     dropped: list[DroppedCandidate] = Field(default_factory=list)
+    #: Candidates read from the run. Zero means there was nothing to triage,
+    #: which is a different fact from "triaged them and none held up" -- both
+    #: of which used to render as `0 finding(s)`.
+    candidates: int = 0
+    #: Trials the harness broke, across every confirmation. A rate measured
+    #: while a third of the trials were crashing is a rate on a subsample, and
+    #: this was previously counted per-confirmation and then discarded.
+    harness_failures: int = 0
     cost_usd: float = 0.0
     median_reduction: float = 0.0
     wall_seconds: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class _Outcome:
+    """What one candidate produced, plus what it cost the run to find out."""
+
+    result: Finding | DroppedCandidate
+    harness_failures: int
+
+
+def _check_threshold_is_reachable(config: TriageConfig) -> None:
+    """Refuse a configuration in which no payload could ever clear the threshold.
+
+    Two independent ways to get one, both of which spend the whole trial budget
+    and then report nothing -- results indistinguishable from real negatives.
+
+    **The trial cap.** At `--threshold 0.9 --max-trials 20`, a payload that
+    reproduced 20 times out of 20 has a Wilson lower bound of 0.839, under the
+    bar. `trials_needed` answers this for free before the first trial, which is
+    what the R9 interface said it was for; until this guard, nothing called it.
+
+    **The width rule, which is the subtler one.** `should_stop` gives up on an
+    interval once it is `target_width` wide, and for a payload that always
+    reproduces that happens when the lower bound reaches `1 - target_width`. If
+    the threshold sits above that, sampling stops at a width that can never
+    decide -- measured, at threshold 0.9 with the default 0.25 width, it stops
+    at 12 trials with `lo=0.757` and would have been decisive at 35.
+
+    Both are configuration errors rather than results, so they are refused
+    rather than reported. The width rule itself could be made threshold-aware
+    instead; that is a change to behaviour the Phase-2 and Phase-3 gates were
+    measured against, so it is written up rather than done here.
+    """
+    floor = trials_needed(1.0, threshold=config.threshold, max_trials=10_000)
+    if config.max_trials < floor:
+        raise ConfigError(
+            f"no payload could clear a threshold of {config.threshold:.2f} in "
+            f"{config.max_trials} trials: even one that reproduced every time would have a "
+            f"lower bound under it. Raise --max-trials to at least {floor}, or lower "
+            f"--threshold."
+        )
+    if config.target_width > 0 and config.threshold > 1.0 - config.target_width:
+        raise ConfigError(
+            f"no payload could clear a threshold of {config.threshold:.2f} while sampling "
+            f"stops at an interval width of {config.target_width:.2f}: a payload that always "
+            f"reproduced would stop at a lower bound of {1.0 - config.target_width:.2f}. "
+            f"Lower --threshold, or narrow the target width to at most "
+            f"{1.0 - config.threshold:.2f}."
+        )
 
 
 def triage(
@@ -114,11 +172,15 @@ def triage(
     config: TriageConfig,
 ) -> TriageReport:
     started = time.time()
+    _check_threshold_is_reachable(config)
     ledger = BudgetLedger(config.caps)
     findings: list[Finding] = []
     dropped: list[DroppedCandidate] = []
+    seen = 0
+    harness_failures = 0
 
     for record in store.read(run_id, "candidates"):
+        seen += 1
         outcome = _triage_one(
             record,
             run_id=run_id,
@@ -130,12 +192,13 @@ def triage(
             config=config,
             ledger=ledger,
         )
-        if isinstance(outcome, Finding):
-            findings.append(outcome)
-            store.append(run_id, "findings", outcome.to_record())
+        harness_failures += outcome.harness_failures
+        if isinstance(outcome.result, Finding):
+            findings.append(outcome.result)
+            store.append(run_id, "findings", outcome.result.to_record())
         else:
-            dropped.append(outcome)
-            store.append(run_id, "dropped", outcome.model_dump(mode="json"))
+            dropped.append(outcome.result)
+            store.append(run_id, "dropped", outcome.result.model_dump(mode="json"))
 
     reductions = [f.reduction for f in findings]
     return TriageReport(
@@ -143,6 +206,8 @@ def triage(
         findings=findings,
         groups=dedupe(findings),
         dropped=dropped,
+        candidates=seen,
+        harness_failures=harness_failures,
         cost_usd=ledger.spent_usd,
         median_reduction=statistics.median(reductions) if reductions else 0.0,
         wall_seconds=time.time() - started,
@@ -160,7 +225,7 @@ def _triage_one(
     sandbox: SandboxProtocol,
     config: TriageConfig,
     ledger: BudgetLedger,
-) -> Finding | DroppedCandidate:
+) -> _Outcome:
     candidate = Candidate.rebuild(
         record["payloads"],
         lineage=[Mutation.model_validate(m) for m in record.get("lineage", [])],
@@ -178,6 +243,14 @@ def _triage_one(
             "any violation rather than this one, and the finding would name a union "
             "of failures that may never have happened together"
         )
+    broken = 0
+    # What this candidate costs is read off the ledger, not summed from the
+    # Confirmations. A cache hit returns the *cached* Confirmation, whose
+    # `cost_usd` is the original measurement's, so adding component costs
+    # double-counts: measured here, a finding reported $1.42 against a ledger
+    # that had spent $1.28. The ledger is the only thing that counts money
+    # once.
+    spent_before = ledger.spent_usd
     seed = int(record.get("seed", 0))
 
     def confirmer_for(scn: Scenario, *, targets: list[str] = targets) -> Confirmer:
@@ -200,11 +273,15 @@ def _triage_one(
 
     working = confirmer_for(scenario)
     first = working.confirm(candidate, seed=seed)
+    broken += first.harness_failures
     if first.estimate.lo < config.threshold:
-        return DroppedCandidate(
-            candidate_id=candidate.id,
-            reason=_why_dropped("as found", first, config.threshold),
-            rate=first.estimate,
+        return _Outcome(
+            DroppedCandidate(
+                candidate_id=candidate.id,
+                reason=_why_dropped("as found", first, config.threshold),
+                rate=first.estimate,
+            ),
+            broken,
         )
 
     shrunk = shrink(
@@ -214,7 +291,10 @@ def _triage_one(
         max_steps=config.max_shrink_steps,
     )
 
+    store.append(run_id, "shrinks", shrunk.to_record())
+
     env_removed: list[str] = []
+    env_describe: list[str] = []
     final_scenario = scenario
     if config.shrink_env:
         env = shrink_environment(
@@ -224,38 +304,50 @@ def _triage_one(
             threshold=config.threshold,
         )
         env_removed = env.removed
+        env_describe = env.removed_describe
         final_scenario = env.scenario
 
     # Fresh Confirmer, narrowed scenario, different seed: see the module
     # docstring. This is the only measurement the finding quotes.
     final = confirmer_for(final_scenario).confirm(shrunk.shrunk, seed=seed + 1)
+    broken += final.harness_failures
     if final.estimate.lo < config.threshold:
-        return DroppedCandidate(
-            candidate_id=candidate.id,
-            reason=_why_dropped("shrunk form", final, config.threshold),
-            rate=final.estimate,
+        return _Outcome(
+            DroppedCandidate(
+                candidate_id=candidate.id,
+                reason=_why_dropped("shrunk form", final, config.threshold),
+                rate=final.estimate,
+            ),
+            broken,
         )
 
-    return Finding(
-        scenario_name=final_scenario.name,
-        scenario_hash=final_scenario.scenario_hash,
-        agent_meta=_agent_meta(store, run_id, final, agent_id, model),
-        sandbox_description=sandbox.describe(),
-        payloads=shrunk.shrunk.payloads,
-        lineage=shrunk.shrunk.lineage,
-        seed_ids=shrunk.shrunk.seed_ids,
-        action_keys=targets,
-        coverage_signature=str(record.get("coverage_signature", "")),
-        rate=final.estimate,
-        threshold=config.threshold,
-        original_bytes=shrunk.original_bytes,
-        shrunk_bytes=shrunk.shrunk_bytes,
-        env_removed=env_removed,
-        # Only the final measurement's trials: they are the evidence for the
-        # rate this finding reports, and mixing in the shrink's would make the
-        # count disagree with `rate.trials`.
-        trial_ids=final.trial_ids,
-        cost_usd=first.cost_usd + shrunk.cost_usd + final.cost_usd,
+    return _Outcome(
+        Finding(
+            scenario_name=final_scenario.name,
+            scenario_hash=final_scenario.scenario_hash,
+            agent_meta=_agent_meta(store, run_id, final, agent_id, model),
+            sandbox_description=sandbox.describe(),
+            payloads=shrunk.shrunk.payloads,
+            lineage=shrunk.shrunk.lineage,
+            seed_ids=shrunk.shrunk.seed_ids,
+            action_keys=targets,
+            coverage_signature=str(record.get("coverage_signature", "")),
+            rate=final.estimate,
+            threshold=config.threshold,
+            original_bytes=shrunk.original_bytes,
+            shrunk_bytes=shrunk.shrunk_bytes,
+            env_removed=env_removed,
+            env_removed_describe=env_describe,
+            # Only the final measurement's trials: they are the evidence for
+            # the rate this finding reports, and mixing in the shrink's would
+            # make the count disagree with `rate.trials`.
+            trial_ids=final.trial_ids,
+            # Everything this candidate cost, including the environment pass --
+            # 34% of a candidate's trials on the Phase-3 gate, and previously
+            # reported as free.
+            cost_usd=ledger.spent_usd - spent_before,
+        ),
+        broken,
     )
 
 
