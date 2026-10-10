@@ -80,9 +80,39 @@ The zero-width seed builds its invisible characters in code rather than pasting 
 
 ## Adding your own
 
-Write a YAML list and pass it to `load_seeds`. The loader is strict: a mapping instead of a list, an invalid entry, or an id already in the corpus is an error naming the file and the entry. A silently dropped seed is worse than a refusal, because you would never know the search had not tried it.
+Write a YAML list and pass it to `load_seeds`, or to `reprobe fuzz --seed-file` (repeatable). The loader is strict: a mapping instead of a list, an invalid entry, or an id already in the corpus is an error naming the file and the entry. A silently dropped seed is worse than a refusal, because you would never know the search had not tried it.
 
-Imported corpora (Promptfoo, AgentDojo) land in `reprobe.seeds.importers` with their licence and attribution recorded here.
+## Importing a corpus (R14)
+
+```bash
+reprobe seeds import redteam.yaml --format promptfoo --out seeds/promptfoo.yaml
+reprobe seeds import runs/ --format agentdojo --out seeds/agentdojo.yaml
+reprobe seeds import corpus.jsonl --format jsonl --out seeds/corpus.yaml
+reprobe fuzz scenarios/readme-injection/scenario.yaml --seed-file seeds/promptfoo.yaml
+```
+
+Each importer reads what the project actually publishes:
+
+| Format | Reads | Seed `family` / `source` |
+| --- | --- | --- |
+| `promptfoo` | A **generated** red-team file (`promptfoo redteam generate`): `tests[].vars.<injectVar>` (`redteam.injectVar`, default `prompt`). Other vars are context, not attacks. A `promptfooconfig.yaml` alone holds no attack text yet, and importing one says so. | the plugin id / `promptfoo:<plugin>`; the strategy becomes a `strategy:<id>` tag |
+| `agentdojo` | **Run logs** — a file or a directory of them. AgentDojo's injection tasks are Python classes; the JSON it publishes is its run logs, whose `injections` map holds the rendered attack text. Logs of the `none` attack inject nothing. | the attack type / `agentdojo:<suite>/<attack>` |
+| `jsonl` | One `{"text", "family"?, "source"?, "tags"?}` object per line. A line without `text` is an error naming the line. | as given |
+
+Identical texts collapse to one seed. Ids are the source's prefix plus a content hash, so importing the same corpus twice gives the same ids — and loading both copies is the duplicate-id error above rather than a doubled corpus. `--out` refuses to overwrite an existing file unless given `--force`.
+
+### Imported text is verbatim, and usually untargeted
+
+These corpora aim at their own goals — AgentDojo's banking injections ask for a transfer to an account number — not at `{{ canary_path }}`. Rewriting them would change what the upstream attack tests, so they are kept exactly as published, and **a seed whose text never names `{{ canary_path }}` is tagged `untargeted`**. Such a seed tests an injection's *framing* — the "important message from the user" wrapper, a jailbreak preamble — and reaches a violation only if the agent goes after the canary on its own. `reprobe seeds import` and `reprobe fuzz` both say how many untargeted seeds are in play, so a search cannot spend its budget on them unannounced.
+
+Imported seeds are not held to the builtin rules above: they may name hosts and accounts from their own benchmarks. In a trial that is harmless — egress reaches only the mock gateway — but an imported seed file is third-party attack text, and belongs where you keep such things, not in a published corpus.
+
+### Attribution
+
+Imported seeds keep their origin in `source`. The test fixtures for these importers vendor small, trimmed samples of each corpus, listed with their full licence notices in [tests/data/THIRD_PARTY.md](../tests/data/THIRD_PARTY.md) and in [NOTICE](../NOTICE):
+
+- **Promptfoo** — [promptfoo/promptfoo](https://github.com/promptfoo/promptfoo), Copyright (c) Promptfoo 2025, MIT License.
+- **AgentDojo** — [ethz-spylab/agentdojo](https://github.com/ethz-spylab/agentdojo), Copyright (c) 2024 Edoardo Debenedetti, Jie Zhang, Mislav Balunovic, Luca Beurer-Kellner, Marc Fischer, and Florian Tramèr, MIT License.
 
 ## Responsible use
 

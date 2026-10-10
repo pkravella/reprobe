@@ -20,4 +20,15 @@ from them carry that attribution through to the exported report. Where this
 repository vendors or redistributes such material, it is listed here together
 with its upstream licence.
 
-At present no third-party attack corpus is vendored in this repository.
+Small trimmed samples of two corpora are vendored as test fixtures for the
+seed importers, unmodified apart from trimming. Their licence notices are
+reproduced in full in tests/data/THIRD_PARTY.md.
+
+  promptfoo (https://github.com/promptfoo/promptfoo)
+    Copyright (c) Promptfoo 2025. MIT License.
+    tests/data/promptfoo-sample.yaml, tests/data/promptfoo-mcp-sample.yaml
+
+  AgentDojo (https://github.com/ethz-spylab/agentdojo)
+    Copyright (c) 2024 Edoardo Debenedetti, Jie Zhang, Mislav Balunovic,
+    Luca Beurer-Kellner, Marc Fischer, and Florian Tramèr. MIT License.
+    tests/data/agentdojo-sample/
