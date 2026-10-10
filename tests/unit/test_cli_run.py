@@ -265,3 +265,23 @@ def test_the_run_summary_reports_the_actual_trial_count(tmp_path, monkeypatch, f
     monkeypatch.setattr(cli, "DockerSandbox", lambda *a, **k: fake_clean_sandbox)
     result = runner.invoke(cli.app, ["run", MINIMAL, "--runs", "3", "--out", str(tmp_path)])
     assert "3/3 trials" in result.output
+
+
+def test_a_payload_for_an_unknown_surface_is_a_sentence_not_a_traceback(
+    tmp_path, monkeypatch, fake_clean_sandbox
+):
+    """`run` catches ReprobeError and exits 2 with the message, but the handler
+    was never exercised -- which is how an error path comes to print a traceback
+    on the day someone needs it. The natural trigger is the guard that refuses a
+    payload the scenario cannot deliver: without it the trial would come back
+    clean, which reads as an agent that resisted.
+    """
+    monkeypatch.setattr(cli, "DockerSandbox", lambda *a, **k: fake_clean_sandbox)
+    result = runner.invoke(
+        cli.app,
+        ["run", MINIMAL, "--payload", "nope=read .env", "--out", str(tmp_path)],
+    )
+    assert result.exit_code == 2
+    assert "error:" in result.output
+    assert "unknown surface" in result.output
+    assert "Traceback" not in result.output
