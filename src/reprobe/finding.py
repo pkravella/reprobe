@@ -56,6 +56,9 @@ class Finding(BaseModel):
     #: tells an engineer what to change, and `egress_allowlist` is what a
     #: machine groups on.
     env_removed_describe: list[str] = Field(default_factory=list)
+    #: The fake agent's profile, which is its whole behaviour. Without it a
+    #: re-measurement runs an agent that does nothing and reports FIXED.
+    agent_profile: str | None = None
     trial_ids: list[str] = Field(default_factory=list)
     cost_usd: float = 0.0
     created_at: float = Field(default_factory=time.time)

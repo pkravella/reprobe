@@ -318,6 +318,15 @@ def test_the_agent_profile_reaches_the_trial(minimal_scenario, tmp_path):
     )
 
 
+def test_the_agent_profile_is_recorded_on_the_finding(minimal_scenario, tmp_path):
+    """Reaching the trial is half of it. An exported test re-measures the
+    finding later, and without the profile it would re-measure an agent that
+    does nothing -- and pass."""
+    store, run_id = _seeded(tmp_path, minimal_scenario)
+    report = _triage(store, run_id, minimal_scenario, _sandbox(), _config(agent_profile="flaky_60"))
+    assert [f.agent_profile for f in report.findings] == ["flaky_60"]
+
+
 def test_infra_hosts_reach_the_verdict(minimal_scenario, tmp_path):
     """An agent's own model API is not an egress violation. Omitted, a tunnelled
     call to it counts as one, and every rate is measured against the wrong
