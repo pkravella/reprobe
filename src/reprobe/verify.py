@@ -40,14 +40,23 @@ than passing on an interval of [0, 1] -- or, worse, on `estimate(0, 0)`.
 from __future__ import annotations
 
 import json
+import random
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
+from reprobe.agents import AgentAdapter, AgentMeta, get_adapter
+from reprobe.agents.fake_agent import FakeAgentAdapter
+from reprobe.budget import BudgetCaps, BudgetLedger
 from reprobe.errors import BudgetExceeded, ConfigError
 from reprobe.finding import Finding
+from reprobe.sandbox import SandboxProtocol
+from reprobe.scenario import Scenario, load_scenario
+from reprobe.shrink import env_knobs
 from reprobe.stats import RateEstimate, estimate
+from reprobe.store import RunStore
+from reprobe.trial import run_trial
 
 DEFAULT_MAX_TRIALS = 20
 
@@ -101,6 +110,9 @@ class Outcome:
     harness_failures: int = 0
     #: Why sampling stopped, when that is not simply "the interval was decisive".
     reason: str = ""
+    #: What changed since the finding was recorded: agent version, model,
+    #: container digest. Reported, never failed on -- see `FindingRunner`.
+    notes: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -111,10 +123,18 @@ class Outcome:
             f"{self.status.name}: {self.estimate.summary()} against a "
             f"{self.threshold:.0%} threshold"
         )
+        # Three decimals for the bound that decided it, as `should_stop` does:
+        # 0/9's upper bound of 0.2991 prints as "30%" at whole percents.
+        if self.status is Status.FIXED:
+            line += f" (upper bound {self.estimate.hi:.3f} < {self.threshold:.2f})"
+        elif self.status is Status.REPRODUCES:
+            line += f" (lower bound {self.estimate.lo:.3f} >= {self.threshold:.2f})"
         if self.harness_failures:
             line += f"; {self.harness_failures} harness failure(s) excluded"
         if self.reason:
             line += f"; {self.reason}"
+        for note in self.notes:
+            line += f"\n  note: {note}"
         return line
 
 
@@ -175,12 +195,82 @@ def load_finding(path: Path, *, fingerprint: str) -> Finding:
     return finding
 
 
+def narrow(scenario: Scenario, finding: Finding) -> Scenario:
+    """Re-apply the environment shrinking a finding records.
+
+    A finding's `scenario_hash` is the *narrowed* scenario's: triage removed the
+    prerequisites in `env_removed` and measured the rate without them. The knobs
+    are offered in a deterministic order and applied cumulatively, so replaying
+    the recorded ids over the full scenario reproduces the narrowed one exactly.
+    """
+    knobs = {knob.id: knob for knob in env_knobs(scenario, finding.payloads)}
+    unknown = [knob_id for knob_id in finding.env_removed if knob_id not in knobs]
+    if unknown:
+        raise ConfigError(
+            f"finding {finding.id} removed prerequisite(s) {unknown} that scenario "
+            f"{scenario.name!r} does not offer; the scenario has changed since export"
+        )
+    current = scenario
+    for knob_id, knob in knobs.items():
+        if knob_id in finding.env_removed:
+            current = knob.apply(current)
+    return current
+
+
+def resolve_scenario(scenarios_root: Path, finding: Finding) -> Scenario:
+    """The scenario a finding was measured in, or a refusal.
+
+    A mismatch is an error, not a warning: a rate measured in some other
+    scenario does not describe this finding, whatever it says.
+    """
+    path = Path(scenarios_root) / finding.scenario_name / "scenario.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"scenario {finding.scenario_name!r} not found at {path} "
+            "(set REPROBE_SCENARIOS to the directory holding it)"
+        )
+    scenario = narrow(load_scenario(path), finding)
+    if scenario.scenario_hash != finding.scenario_hash:
+        raise ConfigError(
+            f"scenario changed: finding {finding.id} was measured in {finding.scenario_hash}, "
+            f"but {path} now narrows to {scenario.scenario_hash}; re-export the finding or "
+            "restore the scenario"
+        )
+    return scenario
+
+
+def _drift(recorded: AgentMeta, current: AgentMeta) -> tuple[str, ...]:
+    pairs = (
+        ("agent version", recorded.agent_version, current.agent_version),
+        ("model", recorded.model_id, current.model_id),
+        ("container digest", recorded.container_digest, current.container_digest),
+    )
+    return tuple(
+        f"{name} changed: recorded {before or '(none)'}, now {after or '(none)'}"
+        for name, before, after in pairs
+        if before != after
+    )
+
+
+def _docker_sandbox(adapter: AgentAdapter) -> SandboxProtocol:
+    from reprobe.sandbox.docker_sandbox import DockerSandbox
+
+    return DockerSandbox(infra_hosts=adapter.infra_hosts)
+
+
 class FindingRunner:
     """Re-runs exported findings against a sandbox.
 
-    The measurement itself (one sandbox trial per call of `run_sequential`'s
-    `trial`) is not built yet, and says so: an opted-in exported test must fail
-    loudly rather than pass on a measurement that never happened.
+    One runner is one verify run: a single dollar ledger across every finding it
+    checks (`REPROBE_MAX_USD` caps the suite, not each test), and a single run
+    in the store holding every trial, so a failing CI job leaves traces behind.
+
+    What it refuses, before spending anything: a scenario that no longer hashes
+    to the finding's, a fake-agent finding with no profile (the fake agent would
+    do nothing and every finding would come back FIXED), and a profile override
+    for a real agent. What it only reports: agent version, model and container
+    digest drift. A model upgrade is exactly what the test exists to catch, and
+    a rebuilt image changes its digest every time.
     """
 
     def __init__(
@@ -188,20 +278,96 @@ class FindingRunner:
         scenarios_root: Path,
         *,
         max_usd: float,
+        sandbox: SandboxProtocol | None = None,
         store_root: Path | None = None,
+        seed: int = 0,
+        profile_override: str | None = None,
     ) -> None:
         self._root = Path(scenarios_root)
-        self._max_usd = max_usd
-        self._store_root = Path(store_root or ".reprobe-verify")
+        self._sandbox = sandbox
+        self._sandboxes: dict[str, SandboxProtocol] = {}
+        self._store = RunStore(Path(store_root or ".reprobe/verify"))
+        self._run_id: str | None = None
+        self._ledger = BudgetLedger(
+            BudgetCaps(max_usd=max_usd, max_trials=1_000_000, max_concurrency=1)
+        )
+        self._rng = random.Random(seed)
+        self._seed = seed
+        self._profile_override = profile_override
 
     def check(self, path: Path, *, fingerprint: str, threshold: float, max_trials: int) -> Outcome:
+        check_decidable(threshold=threshold, max_trials=max_trials)
         finding = load_finding(path, fingerprint=fingerprint)
-        return run_sequential(self._trial(finding), threshold=threshold, max_trials=max_trials)
+        adapter = get_adapter(finding.agent_meta.agent_id)
+        scenario = resolve_scenario(self._root, finding)
+        profile = self._profile_for(finding, adapter)
+        observed: list[AgentMeta] = []
+        trial = self._trial(finding, scenario, adapter, profile, observed)
+        outcome = run_sequential(trial, threshold=threshold, max_trials=max_trials)
+        notes = _drift(finding.agent_meta, observed[0]) if observed else ()
+        return replace(outcome, notes=notes)
 
-    def _trial(self, finding: Finding) -> Callable[[], bool | None]:
-        raise NotImplementedError(
-            f"reprobe: re-measuring a finding ({finding.title()}) is not built yet"
-        )
+    def _profile_for(self, finding: Finding, adapter: AgentAdapter) -> str | None:
+        fake = adapter.id == FakeAgentAdapter.id
+        if self._profile_override is not None:
+            if not fake:
+                raise ConfigError(
+                    f"a profile override only applies to the fake agent, not {adapter.id!r}"
+                )
+            return self._profile_override
+        if fake and finding.agent_profile is None:
+            raise ConfigError(
+                f"finding {finding.id} is for the fake agent but records no profile; with "
+                "none the fake agent does nothing and the finding would always look fixed"
+            )
+        return finding.agent_profile
+
+    def _run(self) -> str:
+        if self._run_id is None:
+            self._run_id = self._store.open_run({"command": "verify", "seed": self._seed})
+        return self._run_id
+
+    def _sandbox_for(self, adapter: AgentAdapter) -> SandboxProtocol:
+        if self._sandbox is not None:
+            return self._sandbox
+        if adapter.id not in self._sandboxes:
+            self._sandboxes[adapter.id] = _docker_sandbox(adapter)
+        return self._sandboxes[adapter.id]
+
+    def _trial(
+        self,
+        finding: Finding,
+        scenario: Scenario,
+        adapter: AgentAdapter,
+        profile: str | None,
+        observed: list[AgentMeta],
+    ) -> Callable[[], bool | None]:
+        targets = set(finding.action_keys)
+        sandbox = self._sandbox_for(adapter)
+
+        def trial() -> bool | None:
+            record = run_trial(
+                scenario,
+                agent_id=adapter.id,
+                model=finding.agent_meta.model_id,
+                payloads=finding.payloads,
+                sandbox=sandbox,
+                store=self._store,
+                run_id=self._run(),
+                seed=self._rng.randrange(2**31),
+                ledger=self._ledger,
+                agent_profile=profile,
+                infra_hosts=adapter.infra_hosts,
+            )
+            if record.harness_error:
+                return None
+            observed.append(record.result.agent_meta)
+            # The same violation, as the Confirmer counts it: any of the
+            # finding's keys, or any violation when it records none.
+            keys = set(record.verdict.action_keys) if record.verdict else set()
+            return bool(keys) and (not targets or bool(keys & targets))
+
+        return trial
 
 
 __all__ = [
@@ -212,5 +378,7 @@ __all__ = [
     "check_decidable",
     "judge",
     "load_finding",
+    "narrow",
+    "resolve_scenario",
     "run_sequential",
 ]

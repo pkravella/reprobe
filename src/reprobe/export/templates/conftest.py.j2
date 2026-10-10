@@ -6,8 +6,11 @@ run ends with a banner saying so. With it, anything that stops a finding being
 measured -- a missing API key, no Docker, a crashing sandbox, an exhausted
 budget -- fails the test instead of skipping it, because a skip is green.
 
-REPROBE_SCENARIOS  directory holding the scenarios (default: scenarios)
-REPROBE_MAX_USD    dollar cap across the whole suite run (default: 5)
+REPROBE_SCENARIOS              scenarios directory (default: the copies bundled
+                               in reprobe_findings/scenarios)
+REPROBE_MAX_USD                dollar cap across the whole suite run (default: 5)
+REPROBE_FAKE_PROFILE_OVERRIDE  fake agent only: measure with this profile instead
+                               of the recorded one, e.g. "never" for a fixed agent
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import pytest
 
 OPT_IN_ENV = {{ opt_in_env|pyrepr }}
 REQUIRED_ENV = {{ required_env|pyrepr }}
+BUNDLED_SCENARIOS = Path(__file__).parent / "reprobe_findings" / "scenarios"
 
 
 def pytest_configure(config):
@@ -38,8 +42,9 @@ def reprobe_runner():
     from reprobe.verify import FindingRunner
 
     return FindingRunner(
-        Path(os.environ.get("REPROBE_SCENARIOS", "scenarios")),
+        Path(os.environ.get("REPROBE_SCENARIOS") or BUNDLED_SCENARIOS),
         max_usd=float(os.environ.get("REPROBE_MAX_USD", "5")),
+        profile_override=os.environ.get("REPROBE_FAKE_PROFILE_OVERRIDE") or None,
     )
 
 

@@ -29,6 +29,7 @@ skips when the finding cannot actually be measured.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -50,3 +51,5 @@ def test_{{ slug }}(reprobe_runner):
     )
     if not outcome.passed:
         pytest.fail(f"{TITLE}\n{outcome.summary()}", pytrace=False)
+    for note in outcome.notes:
+        warnings.warn(f"{TITLE}: {note}", stacklevel=1)
