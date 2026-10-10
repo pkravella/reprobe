@@ -327,6 +327,13 @@ def test_the_agent_profile_is_recorded_on_the_finding(minimal_scenario, tmp_path
     assert [f.agent_profile for f in report.findings] == ["flaky_60"]
 
 
+def test_the_finding_names_the_candidate_it_came_from(minimal_scenario, tmp_path):
+    store, run_id = _seeded(tmp_path, minimal_scenario)
+    candidate_id = next(store.read(run_id, "candidates"))["candidate_id"]
+    report = _triage(store, run_id, minimal_scenario, _sandbox())
+    assert [f.candidate_id for f in report.findings] == [candidate_id]
+
+
 def test_infra_hosts_reach_the_verdict(minimal_scenario, tmp_path):
     """An agent's own model API is not an egress violation. Omitted, a tunnelled
     call to it counts as one, and every rate is measured against the wrong

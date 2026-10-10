@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reprobe findings</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1f21; --bg: #fff; --muted: #666; --line: #ddd; --hit: #fde8e8; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6e6e6; --bg: #16181a; --muted: #9a9a9a; --line: #333; --hit: #4a1f1f; } }
+  body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); max-width: 960px; margin: 2rem auto; padding: 0 16px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  pre { overflow-x: auto; padding: 8px; border: 1px solid var(--line); white-space: pre-wrap; word-break: break-all; }
+  .muted { color: var(--muted); }
+  tr.evidence td { background: var(--hit); }
+  section { border-top: 2px solid var(--line); margin-top: 2rem; }
+</style>
+</head>
+<body>
+<h1>Reprobe findings</h1>
+<p class="muted">Run {{ report.run_id }}{% if report.meta.get('scenario') %} · scenario {{ report.meta['scenario'] }}{% endif %}{% if report.meta.get('agent') %} · agent {{ report.meta['agent'] }}{% endif %}{% if report.meta.get('model') %} · model {{ report.meta['model'] }}{% endif %}</p>
+{% if not report.findings %}
+{% if report.candidates == 0 and not report.dropped %}<p>No candidates: the search produced nothing to triage, so this run says nothing about the agent either way.</p>
+{% else %}<p>No findings: every one of {{ report.candidates or report.dropped|length }} candidate(s) was measured and dropped (listed below).</p>{% endif %}
+{% else %}
+<p>{{ report.groups|length }} distinct finding(s) from {{ report.findings|length }} payload(s), out of {{ report.candidates }} candidate(s).</p>
+<table>
+<tr><th>Finding</th><th>Reproduction rate</th><th>Payload</th><th>Cost</th></tr>
+{% for d in report.details %}{% set f = d.finding %}<tr><td>{{ f|headline }}</td><td>{{ f.rate.summary() }}</td><td>{{ f.shrunk_bytes }} B (−{{ '%.0f'|format(f.reduction * 100) }}%)</td><td>${{ '%.2f'|format(f.cost_usd) }}</td></tr>
+{% endfor %}</table>
+<p class="muted">Each rate is a Wilson interval; a finding is kept when its lower bound clears the threshold. Sampling stops as soon as the interval is decisive, so it is not a calibrated 95% interval; the decision errs towards dropping a real finding rather than keeping a spurious one.</p>
+{% for d in report.details %}{% set f = d.finding %}{% set m = f.agent_meta %}
+<section>
+<h2>{{ loop.index }}. {{ f|headline }}</h2>
+<ul>
+<li><b>Reproduction rate:</b> {{ f.rate.summary() }}; kept because its lower bound cleared the {{ '%.0f'|format(f.threshold * 100) }}% threshold</li>
+<li><b>Violating actions:</b> {{ f.action_keys|join(', ') }}</li>
+<li><b>Agent:</b> {{ m.agent_id }} {{ m.agent_version }}{% if f.agent_profile %} (profile {{ f.agent_profile }}){% endif %}</li>
+<li><b>Model:</b> {{ m.model_id }}</li>
+<li><b>Container:</b> {{ m.container_digest or '(not recorded)' }}</li>
+<li><b>Scenario:</b> {{ f.scenario_name }} ({{ f.scenario_hash }})</li>
+<li><b>Payload:</b> {{ f.shrunk_bytes }} bytes, reduced {{ '%.0f'|format(f.reduction * 100) }}% from {{ f.original_bytes }}</li>
+{% if f.env_removed %}<li><b>Not needed:</b> {{ (f.env_removed_describe or f.env_removed)|join('; ') }}</li>{% endif %}
+{% if d.group_size > 1 %}<li><b>Equivalent payloads found:</b> {{ d.group_size }}</li>{% endif %}
+<li><b>Seeds:</b> {{ f.seed_ids|join(', ') or 'n/a' }}</li>
+<li><b>Mutations applied:</b> {{ f.lineage|length }}</li>
+<li><b>Cost:</b> ${{ '%.2f'|format(f.cost_usd) }}</li>
+</ul>
+<h3>Shrunk payload</h3>
+{% for surface, text in f.payloads.items() %}<p>{{ surface }}:</p>
+<pre>{{ text }}</pre>
+{% endfor %}
+<h3>Shrunk diff</h3>
+{% if d.diff is not none %}<pre>{{ d.diff }}</pre>{% else %}<p>The original payload was not recorded for this finding, so there is no diff to show.</p>{% endif %}
+<h3>Timeline</h3>
+{% if d.trial_id %}<p class="muted">Trial {{ d.trial_id }}, seconds from its first event. Highlighted rows are the observation the violation was recorded from.</p>
+<table>
+<tr><th>+s</th><th>Event</th><th>Source</th><th></th></tr>
+{% for r in d.rows %}<tr{% if r.evidence %} class="evidence"{% endif %}><td>{{ '%.3f'|format(r.offset) }}</td><td>{{ r.description }}</td><td>{{ r.source }}</td><td>{% if r.evidence %}<b>evidence</b>{% endif %}</td></tr>
+{% endfor %}</table>
+{% if d.omitted %}<p class="muted">{{ d.omitted }} more event(s) omitted; the full trace is in the run store.</p>{% endif %}
+{% else %}<p>No recorded trial reproduced this finding's violation, so there is no timeline to show.</p>{% endif %}
+<h3>Reproduce it</h3>
+<p>Save each surface's payload above as <code>&lt;surface&gt;.txt</code>, then:</p>
+<pre>{{ f|reproduce }}</pre>
+</section>
+{% endfor %}{% endif %}
+{% if report.dropped %}<section>
+<h2>Dropped candidates</h2>
+<p>These violated at least once but did not hold up at the threshold. They are listed so the search's near-misses are visible rather than discarded.</p>
+<table>
+<tr><th>Candidate</th><th>Rate</th><th>Reason</th></tr>
+{% for drop in report.dropped %}<tr><td>{{ drop.candidate_id }}</td><td>{{ drop.rate.summary() }}</td><td>{{ drop.reason }}</td></tr>
+{% endfor %}</table>
+</section>{% endif %}
+</body>
+</html>

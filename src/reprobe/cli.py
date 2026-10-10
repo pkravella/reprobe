@@ -430,6 +430,35 @@ def triage(
     typer.echo(f"next: reprobe export {out} --run {run_id}")
 
 
+def _resolve_run(store: RunStore, run: str | None, out: Path) -> str:
+    """The named run, or the latest; exit 2 when there is no such run.
+
+    An unknown run would otherwise read as empty, which advises running triage
+    on a run that does not exist.
+    """
+    runs = store.runs()
+    if not runs or (run is not None and run not in runs):
+        missing = f"no run {run!r}" if runs else "no runs"
+        typer.echo(f"error: {missing} in {out}", err=True)
+        raise typer.Exit(2)
+    return run or runs[0]
+
+
+@app.command()
+def report(
+    out: Annotated[Path, typer.Argument(help="Run store directory")],
+    dest: Annotated[Path, typer.Option("--out", help="Report file: .md, or .html")],
+    run: Annotated[str | None, typer.Option(help="Run id (default: the latest)")] = None,
+) -> None:
+    """Write a Markdown or HTML report of a triaged run: findings, timeline, diff, cost."""
+    from reprobe.export.report import build_report, write_report
+
+    store = RunStore(out)
+    run_id = _resolve_run(store, run, out)
+    written = write_report(build_report(store, run_id), dest)
+    typer.echo(f"report   {written}")
+
+
 @app.command()
 def export(
     out: Annotated[Path, typer.Argument(help="Run store directory")],
@@ -469,14 +498,7 @@ def export(
     from reprobe.finding import Finding
 
     store = RunStore(out)
-    runs = store.runs()
-    if not runs or (run is not None and run not in runs):
-        # An unknown run reads as empty, which would advise running triage on
-        # a run that does not exist.
-        missing = f"no run {run!r}" if runs else "no runs"
-        typer.echo(f"error: {missing} in {out}", err=True)
-        raise typer.Exit(2)
-    run_id = run or runs[0]
+    run_id = _resolve_run(store, run, out)
     findings = [Finding.from_record(r) for r in store.read(run_id, "findings")]
     if not findings:
         typer.echo(f"no findings in run {run_id}; run `reprobe triage` first", err=True)
