@@ -86,3 +86,18 @@ def test_reduction_of_a_finding_with_no_original_size_is_zero_not_a_crash():
 def test_env_removed_summary_reads_either_way():
     assert "egress" in make_finding(env_removed=["egress_allowlist"]).env_removed_summary()
     assert make_finding().env_removed_summary() == "every declared prerequisite is load-bearing"
+
+
+def test_finding_records_the_fake_agent_profile_it_was_measured_with():
+    """The free lane's agent takes its whole behaviour from the profile. A finding
+    that forgot it would be re-measured against an agent that does nothing, and
+    an exported test would pass forever -- pattern 8, one layer further out."""
+    finding = make_finding(agent_profile="flaky_60")
+    restored = Finding.from_record(json.loads(json.dumps(finding.to_record())))
+    assert restored.agent_profile == "flaky_60"
+
+
+def test_a_record_written_before_agent_profile_existed_still_loads():
+    record = make_finding().to_record()
+    del record["agent_profile"]
+    assert Finding.from_record(record).agent_profile is None

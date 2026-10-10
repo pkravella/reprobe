@@ -24,6 +24,7 @@ from reprobe.scenario import load_scenario
 from reprobe.stats import DEFAULT_THRESHOLD
 from reprobe.store import RunStore
 from reprobe.trial import known_profiles, run_trial
+from reprobe.verify import DEFAULT_MAX_TRIALS
 
 app = typer.Typer(
     name="reprobe",
@@ -322,24 +323,8 @@ def fuzz(
         f"  covered edges     {stats.get('covered_edges')}\n"
         f"  cost              ${result.cost_usd:.4f}\n"
         f"  wall              {result.wall_seconds:.0f}s\n\n"
-        f"next (Phase 3): reprobe triage {out} --run {result.run_id}"
+        f"next: reprobe triage {out} --run {result.run_id}"
     )
-
-
-def _not_built_yet(command: str, phase: str) -> None:
-    """Exit cleanly for a command that is declared but not implemented.
-
-    Every subcommand is declared from the start so the shape of the pipeline is
-    visible, and `reprobe fuzz` ends by pointing at `reprobe triage`. Following
-    that pointer used to print a bare `NotImplementedError` traceback, which
-    reads like a crash rather than a feature that has not landed.
-    """
-    typer.echo(
-        f"error: `reprobe {command}` is not built yet; it lands in {phase}.\n"
-        "       Run `reprobe --help` to see what works today.",
-        err=True,
-    )
-    raise typer.Exit(2)
 
 
 @app.command()
@@ -445,12 +430,132 @@ def triage(
 
 
 @app.command()
-def export() -> None:
-    """Export findings as a pytest suite and a GitHub Action."""
-    _not_built_yet("export", "Phase 4")
+def export(
+    out: Annotated[Path, typer.Argument(help="Run store directory")],
+    run: Annotated[str | None, typer.Option(help="Run id (default: the latest)")] = None,
+    dest: Annotated[Path, typer.Option(help="Where to write the pytest suite")] = Path(
+        "tests/reprobe"
+    ),
+    scenario_path: Annotated[
+        Path | None,
+        typer.Option("--scenario", help="Overrides the scenario path recorded by the run"),
+    ] = None,
+    max_trials: Annotated[
+        int, typer.Option(help="Trial cap per exported test before it fails inconclusive")
+    ] = DEFAULT_MAX_TRIALS,
+    representatives_only: Annotated[
+        bool, typer.Option("--representatives-only/--all", help="One test per duplicate group")
+    ] = True,
+    allow_unpinned: Annotated[
+        bool, typer.Option(help="Export findings with no agent version, model or digest")
+    ] = False,
+) -> None:
+    """Export findings as a self-contained pytest suite."""
+    from reprobe.dedupe import dedupe
+    from reprobe.export.pytest_export import OPT_IN_ENV, write_suite
+    from reprobe.finding import Finding
+
+    store = RunStore(out)
+    runs = store.runs()
+    if not runs or (run is not None and run not in runs):
+        # An unknown run reads as empty, which would advise running triage on
+        # a run that does not exist.
+        missing = f"no run {run!r}" if runs else "no runs"
+        typer.echo(f"error: {missing} in {out}", err=True)
+        raise typer.Exit(2)
+    run_id = run or runs[0]
+    findings = [Finding.from_record(r) for r in store.read(run_id, "findings")]
+    if not findings:
+        typer.echo(f"no findings in run {run_id}; run `reprobe triage` first", err=True)
+        raise typer.Exit(1)
+    recorded = store.meta(run_id).get("scenario_path")
+    if scenario_path is None and not recorded:
+        typer.echo(
+            f"error: run {run_id} records no scenario path; pass --scenario explicitly",
+            err=True,
+        )
+        raise typer.Exit(2)
+    source = scenario_path or Path(str(recorded))
+
+    chosen = [g.representative for g in dedupe(findings)] if representatives_only else findings
+    try:
+        scenarios = {load_scenario(source).name: source}
+        written = write_suite(
+            chosen,
+            dest,
+            scenarios=scenarios,
+            max_trials=max_trials,
+            allow_unpinned=allow_unpinned,
+        )
+    except ReprobeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    tests = len([p for p in written if p.name.startswith("test_")])
+    typer.echo(
+        f"suite    {dest} ({tests} test(s) from {len(findings)} finding(s))\n\n"
+        f"next: {OPT_IN_ENV}=1 uv run pytest {dest} -v\n"
+        f"  or: reprobe verify {dest}"
+    )
 
 
 @app.command()
-def verify() -> None:
-    """Re-run exported findings and report whether each still reproduces."""
-    _not_built_yet("verify", "Phase 4")
+def verify(
+    suite_dir: Annotated[Path, typer.Argument(help="Exported suite directory")],
+    max_trials: Annotated[int | None, typer.Option(help="Override every test's trial cap")] = None,
+    max_usd: Annotated[float, typer.Option(help="Dollar cap across the whole suite")] = 10.0,
+    scenarios: Annotated[
+        Path | None, typer.Option(help="Scenarios directory (default: the suite's bundled copies)")
+    ] = None,
+    store_root: Annotated[
+        Path, typer.Option("--store", help="Where to record the verify run's trials")
+    ] = Path(".reprobe/verify"),
+    fake_profile_override: Annotated[
+        str | None,
+        typer.Option(
+            envvar="REPROBE_FAKE_PROFILE_OVERRIDE",
+            help="Fake agent only: measure with this profile, e.g. 'never' for a fixed agent",
+        ),
+    ] = None,
+) -> None:
+    """Re-measure every exported finding and report whether each is fixed."""
+    from reprobe.errors import ConfigError
+    from reprobe.export.pytest_export import FINDINGS_DIR, SCENARIOS_DIR, suite_entries
+    from reprobe.verify import FindingRunner, check_decidable
+
+    entries = suite_entries(suite_dir)
+    if not entries:
+        typer.echo(f"no exported findings under {suite_dir}", err=True)
+        raise typer.Exit(2)
+    if max_trials is not None:
+        try:
+            for entry in entries:
+                check_decidable(threshold=entry.threshold, max_trials=max_trials)
+        except ConfigError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(2) from exc
+
+    runner = FindingRunner(
+        scenarios or suite_dir / FINDINGS_DIR / SCENARIOS_DIR,
+        max_usd=max_usd,
+        store_root=store_root,
+        profile_override=fake_profile_override,
+    )
+    not_fixed = 0
+    for entry in entries:
+        try:
+            outcome = runner.check(
+                entry.finding_file,
+                fingerprint=entry.fingerprint,
+                threshold=entry.threshold,
+                max_trials=max_trials or entry.max_trials,
+            )
+        except (ReprobeError, FileNotFoundError) as exc:
+            not_fixed += 1
+            typer.echo(f"  ERROR       {entry.test_file.name}: {exc}")
+            continue
+        not_fixed += not outcome.passed
+        typer.echo(f"  {outcome.status.name:11s} {entry.test_file.name}: {outcome.summary()}")
+
+    typer.echo(f"\n{not_fixed} of {len(entries)} finding(s) not fixed")
+    raise typer.Exit(1 if not_fixed else 0)
