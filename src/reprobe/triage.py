@@ -339,6 +339,7 @@ def _triage_one(
             env_removed=env_removed,
             env_removed_describe=env_describe,
             agent_profile=config.agent_profile,
+            candidate_id=candidate.id,
             # Only the final measurement's trials: they are the evidence for
             # the rate this finding reports, and mixing in the shrink's would
             # make the count disagree with `rate.trials`.

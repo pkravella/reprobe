@@ -101,3 +101,17 @@ def test_a_record_written_before_agent_profile_existed_still_loads():
     record = make_finding().to_record()
     del record["agent_profile"]
     assert Finding.from_record(record).agent_profile is None
+
+
+def test_finding_records_the_candidate_it_was_shrunk_from():
+    """The report's shrunk diff needs the original payload, which lives on the
+    candidate; without the id it would have to guess which one."""
+    finding = make_finding(candidate_id="cand_abc")
+    restored = Finding.from_record(json.loads(json.dumps(finding.to_record())))
+    assert restored.candidate_id == "cand_abc"
+
+
+def test_a_record_written_before_candidate_id_existed_still_loads():
+    record = make_finding().to_record()
+    del record["candidate_id"]
+    assert Finding.from_record(record).candidate_id is None

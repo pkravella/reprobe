@@ -1,0 +1,70 @@
+# Reprobe findings
+
+Run {{ report.run_id|mdi }}{% if report.meta.get('scenario') %} · scenario {{ report.meta['scenario']|mdi }}{% endif %}{% if report.meta.get('agent') %} · agent {{ report.meta['agent']|mdi }}{% endif %}{% if report.meta.get('model') %} · model {{ report.meta['model']|mdi }}{% endif %}
+
+{% if not report.findings %}{% if report.candidates == 0 and not report.dropped %}No candidates: the search produced nothing to triage, so this run says nothing about the agent either way.
+{% else %}No findings: every one of {{ report.candidates or report.dropped|length }} candidate(s) was measured and dropped (listed below).
+{% endif %}{% else %}{{ report.groups|length }} distinct finding(s) from {{ report.findings|length }} payload(s), out of {{ report.candidates }} candidate(s).
+
+| Finding | Reproduction rate | Payload | Cost |
+| --- | --- | --- | --- |
+{% for d in report.details %}{% set f = d.finding %}| {{ f|headline|mdi }} | {{ f.rate.summary() }} | {{ f.shrunk_bytes }} B (−{{ '%.0f'|format(f.reduction * 100) }}%) | ${{ '%.2f'|format(f.cost_usd) }} |
+{% endfor %}
+About the rates: each is a Wilson interval, and a finding is kept when its lower
+bound clears the threshold. Sampling stops as soon as the interval is decisive,
+so it is not a calibrated 95% interval; the decision it supports errs towards
+dropping a real finding rather than keeping a spurious one.
+{% for d in report.details %}{% set f = d.finding %}{% set m = f.agent_meta %}
+## {{ loop.index }}. {{ f|headline|mdi }}
+
+- **Reproduction rate:** {{ f.rate.summary() }}; kept because its lower bound cleared the {{ '%.0f'|format(f.threshold * 100) }}% threshold
+- **Violating actions:** {{ f.action_keys|join(', ')|mdi }}
+- **Agent:** {{ m.agent_id|mdi }} {{ m.agent_version|mdi }}{% if f.agent_profile %} (profile {{ f.agent_profile|mdi }}){% endif %}
+- **Model:** {{ m.model_id|mdi }}
+- **Container:** {{ (m.container_digest or '(not recorded)')|mdi }}
+- **Scenario:** {{ f.scenario_name|mdi }} ({{ f.scenario_hash|mdi }})
+- **Payload:** {{ f.shrunk_bytes }} bytes, reduced {{ '%.0f'|format(f.reduction * 100) }}% from {{ f.original_bytes }}
+{% if f.env_removed %}- **Not needed:** {{ (f.env_removed_describe or f.env_removed)|join('; ')|mdi }}
+{% endif %}{% if d.group_size > 1 %}- **Equivalent payloads found:** {{ d.group_size }}
+{% endif %}- **Seeds:** {{ (f.seed_ids|join(', ') or 'n/a')|mdi }}
+- **Mutations applied:** {{ f.lineage|length }}
+- **Cost:** ${{ '%.2f'|format(f.cost_usd) }}
+
+### Shrunk payload
+{% for surface, text in f.payloads.items() %}
+{{ surface|mdi }}:
+
+{{ text|fence }}
+{% endfor %}
+### Shrunk diff
+
+{% if d.diff is not none %}{{ d.diff|fence('diff') }}
+{% else %}The original payload was not recorded for this finding, so there is no diff to show.
+{% endif %}
+### Timeline
+{% if d.trial_id %}
+Trial {{ d.trial_id|mdi }}, seconds from its first event. **evidence** marks the observation the violation was recorded from.
+
+| +s | Event | Source | |
+| --- | --- | --- | --- |
+{% for r in d.rows %}| {{ '%.3f'|format(r.offset) }} | {{ r.description|mdi }} | {{ r.source|mdi }} | {% if r.evidence %}**evidence**{% endif %} |
+{% endfor %}{% if d.omitted %}
+{{ d.omitted }} more event(s) omitted; the full trace is in the run store.
+{% endif %}{% else %}
+No recorded trial reproduced this finding's violation, so there is no timeline to show.
+{% endif %}
+### Reproduce it
+
+Save each surface's payload above as `<surface>.txt`, then:
+
+{{ f|reproduce|fence('bash') }}
+{% endfor %}{% endif %}{% if report.dropped %}
+## Dropped candidates
+
+These violated at least once but did not hold up at the threshold. They are
+listed so the search's near-misses are visible rather than discarded.
+
+| Candidate | Rate | Reason |
+| --- | --- | --- |
+{% for drop in report.dropped %}| {{ drop.candidate_id|mdi }} | {{ drop.rate.summary() }} | {{ drop.reason|mdi }} |
+{% endfor %}{% endif %}

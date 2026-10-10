@@ -59,6 +59,9 @@ class Finding(BaseModel):
     #: The fake agent's profile, which is its whole behaviour. Without it a
     #: re-measurement runs an agent that does nothing and reports FIXED.
     agent_profile: str | None = None
+    #: The candidate this was shrunk from, whose original payload the report
+    #: diffs against. None for findings recorded before it existed.
+    candidate_id: str | None = None
     trial_ids: list[str] = Field(default_factory=list)
     cost_usd: float = 0.0
     created_at: float = Field(default_factory=time.time)
