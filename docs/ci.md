@@ -11,7 +11,7 @@ From the run store that `reprobe triage` wrote, at your repository's root:
 
 ```bash
 reprobe export .reprobe --dest tests/reprobe \
-    --workflow .github/workflows/reprobe.yml --reprobe-ref <tag-or-commit>
+    --workflow .github/workflows/reprobe.yml
 ```
 
 This writes:
@@ -28,8 +28,9 @@ This writes:
   finding was measured in.
 - `tests/reprobe/conftest.py`: the fixture that runs the measurement.
 - The workflow, only with `--workflow`. Every scheduled run spends agent budget,
-  so it is never written unasked. Until Reprobe has a release, pass
-  `--reprobe-ref` with the tag or commit the workflow should build from.
+  so it is never written unasked. It builds from the Reprobe release you
+  exported with (tag `v<version>`); pass `--reprobe-ref` to pin another tag or
+  commit.
 
 Re-exporting rewrites the generated files in place, and removes tests for
 findings no longer exported. Tests and a `conftest.py` you wrote yourself are

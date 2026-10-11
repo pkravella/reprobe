@@ -6,39 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end to end on the free test lane; `export` and `verify` turn findings into a regression suite and re-check it.
+## [0.1.0] - 2026-10-11
 
-### Fixed
+The first release. Everything in the PRD's P0 set, plus seed import (R14), duplicate grouping (R16) and the finding report (R17): a coding agent run on legitimate tasks in a disposable sandbox, a coverage-guided search over what an attacker controls, every violation confirmed with a reproduction rate and shrunk to a minimal payload, and each finding exported as a pytest suite and a GitHub Action that pass only once the exploit is shown fixed.
 
-- The benchmark's concurrency-4 numbers are re-measured on the fixed search: guided against random went from 0.62× to 0.88×, still short of the 2× target, and the write-up says so. The old run is kept in the write-up for comparison.
-- Guided search running more than one trial at a time now replays the same search for the same seed, and finds more. It used to absorb results in whatever order the containers finished. So the search depended on timing, not just the seed: at concurrency 4, only 15 of 40 seeds replayed the same search. The scrambled feedback also cost it violating trials. Results are now absorbed in the order they were dispatched, with a fixed lag: every seed replays exactly, and the guided arm recovered about half of what it had lost. The rest is inherent: at concurrency K each choice is made without the last K − 1 results, which costs a fifth to a quarter of violating trials at a fixed trial budget, in exchange for K times the throughput. `reprobe fuzz` now says so when it runs the guided search above concurrency 1.
-- A finding found with the free test agent now records the behaviour profile it was measured with. Without it, re-measuring the finding ran an agent that does nothing, every trial came back clean, and the exported test would have passed forever.
-- A finding now reports what it actually cost. The figure was summed from the individual
-  measurements, which double-counts: asking about a payload that has already been measured returns
-  the earlier answer, cost included. Measured, a finding claimed $1.42 against a ledger that had
-  spent $1.28. It is read off the budget ledger now, which is the only thing that counts money
-  once, and it includes the environment pass — a third of a candidate's trials, previously
-  reported as free.
-- Harness failures during triage are counted and reported. A reproduction rate measured while a
-  third of the trials were crashing is a rate on whatever survived, and that went unsaid.
-- A triage run with nothing to triage says so, instead of reporting that it found no findings.
-  "The search produced no candidates" and "every candidate was measured and dropped" are different
-  facts and the second is the only one worth reading as a result.
-- A threshold no sample could ever clear is refused before the first trial rather than after the
-  whole budget. Asking for a 90% reproduction rate while allowing 20 trials cannot succeed — a
-  payload that reproduced every single time would still fall short — and neither can asking for one
-  while sampling stops as soon as the interval is 25 percentage points wide, whatever the trial
-  budget. Both used to spend everything and report nothing, which reads exactly like a real
-  negative result.
-- The plain-English description of which prerequisites an exploit turned out not to need now
-  reaches the report. It was being built for every one of them and then dropped in favour of their
-  internal names, so the output said `egress_allowlist` where it had "an egress allowlist
-  (registry.npmjs.org)" available.
-- `--max-usd 0` now forbids spending, which is what it has always claimed to do. The check was
-  written so that a cap of zero switched the dollar cap off altogether, meaning the one value
-  anyone would reach for to say "this must not cost me anything" was the only value that allowed
-  unlimited spend. Harmless on the free test lanes, which cost exactly nothing and so never
-  noticed, and a trap on a paid agent.
+Measured on the free fake-agent lane, with what each measurement does and does not show, in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md). The headline benchmark missed its target: guided search found 0.75× to 0.88× the unique reproducible findings of the random baseline, against 2×, on a target with a single reachable bug.
 
 ### Added
 
@@ -107,6 +79,36 @@ Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end
 
 ### Fixed
 
+- The benchmark's concurrency-4 numbers are re-measured on the fixed search: guided against random went from 0.62× to 0.88×, still short of the 2× target, and the write-up says so. The old run is kept in the write-up for comparison.
+- Guided search running more than one trial at a time now replays the same search for the same seed, and finds more. It used to absorb results in whatever order the containers finished. So the search depended on timing, not just the seed: at concurrency 4, only 15 of 40 seeds replayed the same search. The scrambled feedback also cost it violating trials. Results are now absorbed in the order they were dispatched, with a fixed lag: every seed replays exactly, and the guided arm recovered about half of what it had lost. The rest is inherent: at concurrency K each choice is made without the last K − 1 results, which costs a fifth to a quarter of violating trials at a fixed trial budget, in exchange for K times the throughput. `reprobe fuzz` now says so when it runs the guided search above concurrency 1.
+- A finding found with the free test agent now records the behaviour profile it was measured with. Without it, re-measuring the finding ran an agent that does nothing, every trial came back clean, and the exported test would have passed forever.
+- A finding now reports what it actually cost. The figure was summed from the individual
+  measurements, which double-counts: asking about a payload that has already been measured returns
+  the earlier answer, cost included. Measured, a finding claimed $1.42 against a ledger that had
+  spent $1.28. It is read off the budget ledger now, which is the only thing that counts money
+  once, and it includes the environment pass — a third of a candidate's trials, previously
+  reported as free.
+- Harness failures during triage are counted and reported. A reproduction rate measured while a
+  third of the trials were crashing is a rate on whatever survived, and that went unsaid.
+- A triage run with nothing to triage says so, instead of reporting that it found no findings.
+  "The search produced no candidates" and "every candidate was measured and dropped" are different
+  facts and the second is the only one worth reading as a result.
+- A threshold no sample could ever clear is refused before the first trial rather than after the
+  whole budget. Asking for a 90% reproduction rate while allowing 20 trials cannot succeed — a
+  payload that reproduced every single time would still fall short — and neither can asking for one
+  while sampling stops as soon as the interval is 25 percentage points wide, whatever the trial
+  budget. Both used to spend everything and report nothing, which reads exactly like a real
+  negative result.
+- The plain-English description of which prerequisites an exploit turned out not to need now
+  reaches the report. It was being built for every one of them and then dropped in favour of their
+  internal names, so the output said `egress_allowlist` where it had "an egress allowlist
+  (registry.npmjs.org)" available.
+- `--max-usd 0` now forbids spending, which is what it has always claimed to do. The check was
+  written so that a cap of zero switched the dollar cap off altogether, meaning the one value
+  anyone would reach for to say "this must not cost me anything" was the only value that allowed
+  unlimited spend. Harmless on the free test lanes, which cost exactly nothing and so never
+  noticed, and a trap on a paid agent.
+
 - A scenario can no longer declare a surface or canary the harness cannot actually deliver. Three of the four surface kinds and one of the three canary kinds are in the schema as the shape of an eventual feature, and nothing renders or plants them — so a scenario using one had its payload written nowhere, or no secret planted at all, and reported a clean trial for every mutation. That is indistinguishable from an agent that resisted the injection. Both are refused at load time now, and a payload aimed at an unrenderable surface is refused when the workspace is built, for scenarios assembled in code rather than loaded from a file.
 - `reprobe triage`, `export` and `verify` say they are not built yet instead of printing a `NotImplementedError` traceback. `reprobe fuzz` ends by pointing at `triage`, so following its own advice looked like a crash.
 - Run ids are built from a single clock reading. Two readings meant that when a second boundary fell between them, the seconds stayed in the old second while the microseconds wrapped to near zero — so a newer run sorted as older, and the commands that default to "the latest run" would silently pick the wrong one. It showed up first as an intermittent test failure.
@@ -116,15 +118,5 @@ Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end
 - The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
 - The free lane's scripted agent now reads the attacker-controlled files the *scenario* declares, instead of four filenames baked into its container image. A scenario whose payload went anywhere else had it written to disk and never read, so the trial came back clean — indistinguishable from an agent that saw the injection and resisted it, and enough to make a comparison across such scenarios report a tie.
 
-### Planned for 0.1.0
-
-- Declarative YAML scenarios with attacker-controlled surfaces and synthetic canaries.
-- Agent adapters for Claude Code and Codex CLI, driven headless with recorded versions.
-- Five deterministic violation checks: canary read, canary exfiltration, protected-file write, off-allowlist egress, dangerous command.
-- Template and structural mutators with a coverage-guided scheduler, plus a random baseline.
-- Reproduction-rate estimation with a Wilson 95% interval and early stopping.
-- Delta-debugging shrinker over payload and environment, gated on the interval's lower bound.
-- Export of each finding as a pytest test and a GitHub Action, pinned to agent, model and container digest.
-- A pack of ten scenarios and a published guided-versus-baseline benchmark.
-
-[Unreleased]: https://github.com/pkravella/reprobe/commits/main
+[Unreleased]: https://github.com/pkravella/reprobe/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/pkravella/reprobe/releases/tag/v0.1.0
