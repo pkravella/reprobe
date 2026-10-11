@@ -252,6 +252,95 @@ def test_a_scenario_with_no_surfaces_is_refused(minimal_scenario, tmp_path):
     assert sandbox.calls == []
 
 
+class _SpyScheduler:
+    """Wraps the real scheduler and records, at each choice, which results it
+    had absorbed so far."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.observed: list[str] = []
+        self.chosen: list[str] = []
+        self.seen_at_choice: list[int] = []
+
+    def next_candidate(self, rng):
+        self.seen_at_choice.append(len(self.observed))
+        candidate = self._inner.next_candidate(rng)
+        self.chosen.append(candidate.id)
+        return candidate
+
+    def observe(self, candidate, *args, **kwargs):
+        self.observed.append(candidate.id)
+        return self._inner.observe(candidate, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _jittery(behaviour):
+    """Completion order scrambled the way real containers scramble it: by
+    timing nobody seeded."""
+    jitter = random.Random()
+
+    def run(spec):
+        time.sleep(jitter.uniform(0, 0.003))
+        return behaviour(spec)
+
+    return run
+
+
+@pytest.mark.parametrize("concurrency", [1, 2, 4])
+def test_each_choice_sees_exactly_the_results_dispatched_k_before_it(
+    minimal_scenario, tmp_path, monkeypatch, concurrency
+):
+    """Fixed lag, in dispatch order. Candidate i is chosen after absorbing
+    results 0..i-K and no others, whatever order the trials finished in. That
+    makes the search a function of the seed and the concurrency alone."""
+    import reprobe.loop as loop
+
+    spies = []
+    real = loop._build_scheduler
+
+    def build(config, ctx):
+        spies.append(_SpyScheduler(real(config, ctx)))
+        return spies[-1]
+
+    monkeypatch.setattr(loop, "_build_scheduler", build)
+    gradient = _gradient_sandbox()
+    fuzz(
+        _config(minimal_scenario, trials=24, concurrency=concurrency),
+        sandbox=FakeSandbox(_jittery(gradient.run)),
+        store=RunStore(tmp_path),
+    )
+    (spy,) = spies
+    assert spy.seen_at_choice == [max(0, i - concurrency + 1) for i in range(24)]
+    assert spy.observed == spy.chosen  # absorbed in dispatch order
+
+
+def test_the_same_seed_replays_the_same_search_at_any_concurrency(minimal_scenario, tmp_path):
+    """Measured before the fix, on a compositional gradient over 40 seeds: at
+    concurrency 4 only 15 of 40 seeds replayed the same search, because
+    results were absorbed in completion order."""
+
+    def search(path):
+        seen = []
+        gradient = _gradient_sandbox()
+
+        def recording(spec):
+            seen.append((spec.seed, tuple(sorted(spec.payloads.items()))))
+            return gradient.run(spec)
+
+        out = fuzz(
+            _config(minimal_scenario, trials=60, concurrency=4),
+            sandbox=FakeSandbox(_jittery(recording)),
+            store=RunStore(tmp_path / path),
+        )
+        return sorted(seen), out.violating_trials
+
+    first = search("a")
+    for again in ("b", "c"):
+        assert search(again) == first
+
+
 def test_a_trial_that_lost_the_race_for_the_budget_is_not_a_harness_failure():
     """Only a race produces this: the loop checks the budget, submits, and
     another trial exhausts it before this one starts. It is not a harness
@@ -260,18 +349,18 @@ def test_a_trial_that_lost_the_race_for_the_budget_is_not_a_harness_failure():
     because the race cannot be forced deterministically through `fuzz`.
     """
     import threading
+    from collections import deque
     from concurrent.futures import Future
 
-    from reprobe.loop import _drain
+    from reprobe.loop import _absorb_oldest
 
     lost: Future = Future()
     lost.set_exception(BudgetExceeded("usd cap reached"))
     absorbed: list[object] = []
-    _drain(
-        {lost: Candidate.rebuild({"readme": "x"})},
+    _absorb_oldest(
+        deque([(lost, Candidate.rebuild({"readme": "x"}))]),
         lambda c, r: absorbed.append(r),
         threading.Lock(),
-        all_of_them=True,
     )
     assert absorbed == []
 

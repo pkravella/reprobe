@@ -588,20 +588,46 @@ counted as "> 200" (right-censored). At concurrency 1 a trial took about 2.1s,
 so the guided median of 90 trials is about 3 minutes against the PRD's 30. That
 says the harness is fast, not that a real agent would fail that quickly.
 
-### Concurrency handicaps guided search
+### Concurrency handicaps guided search, and what was fixed
 
 With trials in flight, the guided scheduler chooses its next candidates before
 it has seen the results of the last ones. On seed 2 the guided arm found **0**
 violations at concurrency 4, on two separate runs, and **58** at concurrency 1.
-The concurrency-1 benchmark reproduced the 58 exactly. Over all ten seeds,
-going to concurrency 1 lifted the guided arm from 5 to 6 seeds and from 0.62×
-to 0.75×. Seed 10 went the other way (29 violations at 4, 0 at 1), so this is
-not a uniform gain at this sample size. The random arms were identical at both
-settings, as they should be: random does not learn from results.
+The concurrency-1 benchmark reproduced the 58 exactly. The random arms were
+identical at both settings, as they should be: random does not learn from
+results.
 
-`reprobe fuzz` defaults to `--concurrency 4`, so this is a product problem, not
-a benchmark artefact, and it is tracked separately. It also means that above
-concurrency 1 a seed does not reliably replay the same guided search.
+**Measured properly**, on a `FakeSandbox` that mirrors `compositional`, with a
+random per-trial delay so that completion order varies the way containers make
+it vary. 40 seeds, 200 trials each:
+
+| Concurrency | Seeds reaching the violation | Violating trials | Seeds replaying the same search |
+| --- | --- | --- | --- |
+| 1 | 27 | 1,159 | 40 of 40 |
+| 2 | 25 → 23 | 759 → 923 | 25 → **40** of 40 |
+| 4 | 21 → 25 | 728 → 839 | 15 → **40** of 40 |
+| 8 | 23 → 26 | 640 → 858 | 15 → **40** of 40 |
+| random | 26 | 35 | |
+
+Each arrow is before → after the fix. **Two separate problems, one fixed:**
+
+- **Results were absorbed in completion order.** So the search depended on
+  which container happened to finish first. A seed did not replay the same
+  search, contrary to the project's determinism rule, and the scrambled
+  feedback cost the guided arm a further share of its hits. **Fixed:** results
+  are now absorbed in dispatch order, with a fixed lag. Candidate *i* is chosen
+  after exactly results 0 to *i − K*. The search is a function of the seed and
+  the concurrency alone, and it recovered about half the loss.
+- **The lag itself is inherent.** At concurrency K, each choice is made without
+  the last K − 1 results. At a fixed trial budget that still costs the guided
+  arm 20–28% of its violating trials. It buys K× the throughput in wall-clock
+  time, so it is a trade-off, not a bug. `reprobe fuzz` now says so when it
+  runs the guided scheduler above concurrency 1. When trials, not time, are the
+  scarce thing (a paid agent), use `--concurrency 1`.
+
+**Arm A's concurrency-4 run above predates the fix.** Its guided numbers were
+measured with completion-order absorption. The concurrency-1 run is unaffected:
+at concurrency 1 the two orders are the same.
 
 ### The six success metrics
 
