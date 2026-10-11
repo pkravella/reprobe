@@ -10,6 +10,7 @@ Implementation is under way. `reprobe run`, `soak`, `fuzz` and `triage` work end
 
 ### Fixed
 
+- The benchmark's concurrency-4 numbers are re-measured on the fixed search: guided against random went from 0.62× to 0.88×, still short of the 2× target, and the write-up says so. The old run is kept in the write-up for comparison.
 - Guided search running more than one trial at a time now replays the same search for the same seed, and finds more. It used to absorb results in whatever order the containers finished. So the search depended on timing, not just the seed: at concurrency 4, only 15 of 40 seeds replayed the same search. The scrambled feedback also cost it violating trials. Results are now absorbed in the order they were dispatched, with a fixed lag: every seed replays exactly, and the guided arm recovered about half of what it had lost. The rest is inherent: at concurrency K each choice is made without the last K − 1 results, which costs a fifth to a quarter of violating trials at a fixed trial budget, in exchange for K times the throughput. `reprobe fuzz` now says so when it runs the guided search above concurrency 1.
 - A finding found with the free test agent now records the behaviour profile it was measured with. Without it, re-measuring the finding ran an agent that does nothing, every trial came back clean, and the exported test would have passed forever.
 - A finding now reports what it actually cost. The figure was summed from the individual
