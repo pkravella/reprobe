@@ -137,3 +137,23 @@ def test_fuzz_reports_a_bad_seed_file_cleanly(tmp_path, monkeypatch, fake_clean_
     out = _invoke(tmp_path, monkeypatch, fake_clean_sandbox, "--seed-file", str(bad))
     assert out.exit_code == 2
     assert "bad.yaml" in out.output
+
+
+def test_guided_search_above_concurrency_1_states_the_trade_off(
+    tmp_path, monkeypatch, fake_clean_sandbox
+):
+    """Each choice is made without the last K-1 results. Measured on a
+    compositional gradient over 40 seeds, that costs a fifth to a quarter of the
+    guided arm's violating trials at a fixed trial budget, in exchange for K
+    times the throughput. Worth one line, not a silence."""
+    out = _invoke(tmp_path, monkeypatch, fake_clean_sandbox, "--trials", "4", "--concurrency", "4")
+    assert out.exit_code == 0, out.output
+    assert "concurrency 4" in out.output
+    assert "without the last 3 results" in out.output
+
+
+def test_no_trade_off_note_when_there_is_none(tmp_path, monkeypatch, fake_clean_sandbox):
+    for args in (["--concurrency", "1"], ["--concurrency", "4", "--scheduler", "random"]):
+        out = _invoke(tmp_path, monkeypatch, fake_clean_sandbox, "--trials", "4", *args)
+        assert out.exit_code == 0, out.output
+        assert "without the last" not in out.output

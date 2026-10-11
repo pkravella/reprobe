@@ -27,7 +27,8 @@ import dataclasses
 import random
 import threading
 import time
-from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Literal
 
@@ -213,10 +214,20 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
             state.found[candidate.id] = finding
             store.append(run_id, "candidates", finding.to_record())
 
+    # Fixed lag, in dispatch order. Candidate i is chosen after absorbing
+    # results 0..i-K exactly, so the search is a function of the seed and the
+    # concurrency, never of which container happened to finish first. Absorbing
+    # in completion order made a seed replay a different search at concurrency
+    # above 1 (15 of 40 seeds replayed at concurrency 4, measured) and cost the
+    # guided arm a third of its violating trials. The price is head-of-line
+    # blocking: a slow trial holds back the next choice, though not the trials
+    # already in flight.
     workers = max(1, config.caps.max_concurrency)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        pending: dict[Future[TrialRecord], Candidate] = {}
+        in_flight: deque[tuple[Future[TrialRecord], Candidate]] = deque()
         while state.dispatched < config.caps.max_trials:
+            if len(in_flight) >= workers:
+                _absorb_oldest(in_flight, absorb, lock)
             try:
                 ledger.check_can_dispatch()
             except BudgetExceeded:
@@ -224,12 +235,10 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
             with lock:
                 candidate = scheduler.next_candidate(rng)
                 trial_seed = rng.randrange(2**31)
-            pending[pool.submit(one_trial, candidate, trial_seed)] = candidate
+            in_flight.append((pool.submit(one_trial, candidate, trial_seed), candidate))
             state.dispatched += 1
-            if len(pending) >= workers:
-                _drain(pending, absorb, lock)
-        while pending:
-            _drain(pending, absorb, lock, all_of_them=True)
+        while in_flight:
+            _absorb_oldest(in_flight, absorb, lock)
 
     return FuzzResult(
         run_id=run_id,
@@ -254,21 +263,18 @@ class _LoopState:
         self.found: dict[str, CandidateFinding] = {}
 
 
-def _drain(
-    pending: dict[Future[TrialRecord], Candidate],
+def _absorb_oldest(
+    in_flight: deque[tuple[Future[TrialRecord], Candidate]],
     absorb: Any,
     lock: threading.Lock,
-    *,
-    all_of_them: bool = False,
 ) -> None:
-    done, _ = wait(list(pending), return_when=ALL_COMPLETED if all_of_them else FIRST_COMPLETED)
-    for future in done:
-        candidate = pending.pop(future)
-        try:
-            record = future.result()
-        except BudgetExceeded:
-            # A trial that lost the race for the last of the budget. Not a
-            # harness failure and not a result; it simply never ran.
-            continue
-        with lock:
-            absorb(candidate, record)
+    """Wait for the oldest trial in flight and absorb it, whatever finished first."""
+    future, candidate = in_flight.popleft()
+    try:
+        record = future.result()
+    except BudgetExceeded:
+        # A trial that lost the race for the last of the budget. Not a
+        # harness failure and not a result; it simply never ran.
+        return
+    with lock:
+        absorb(candidate, record)

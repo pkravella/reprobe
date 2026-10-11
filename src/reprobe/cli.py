@@ -301,6 +301,14 @@ def fuzz(
                 else ""
             )
         )
+        if scheduler == "energy" and concurrency > 1:
+            typer.echo(
+                f"note: at concurrency {concurrency} the guided search picks each candidate "
+                f"without the last {concurrency - 1} results. At a fixed trial budget that "
+                "costs it some exploitation (a fifth to a quarter of violating trials, "
+                "measured on the scripted agent); it buys throughput. --concurrency 1 when "
+                "trials, not time, are what you are short of."
+            )
         scenario = load_scenario(scenario_path)
         adapter = get_adapter(agent)
         config = FuzzConfig(
