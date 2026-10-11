@@ -278,12 +278,29 @@ def fuzz(
     agent_profile: Annotated[str | None, typer.Option(help="Fake-agent behaviour profile")] = None,
     otel_endpoint: Annotated[str | None, typer.Option(help="OTLP/HTTP endpoint")] = None,
     out: Annotated[Path, typer.Option(help="Run store directory")] = Path(".reprobe"),
+    seed_file: Annotated[
+        list[Path] | None,
+        typer.Option(help="Extra seed file (repeatable), e.g. from `reprobe seeds import`"),
+    ] = None,
 ) -> None:
     """Search a scenario's attacker-controlled surfaces for violations."""
     from reprobe.loop import FuzzConfig
     from reprobe.loop import fuzz as run_fuzz
+    from reprobe.seeds import load_seeds
+    from reprobe.seeds.importers import UNTARGETED_TAG
 
     try:
+        seeds = load_seeds(seed_file or [])
+        untargeted = sum(UNTARGETED_TAG in s.tags for s in seeds)
+        typer.echo(
+            f"{len(seeds)} seed(s)"
+            + (
+                f", {untargeted} untargeted (no {{{{ canary_path }}}}: they test an "
+                "injection's framing and reach a violation only on the agent's own initiative)"
+                if untargeted
+                else ""
+            )
+        )
         scenario = load_scenario(scenario_path)
         adapter = get_adapter(agent)
         config = FuzzConfig(
@@ -301,6 +318,7 @@ def fuzz(
             baseline_mutations=baseline_mutations,
             agent_profile=agent_profile,
             otel_endpoint=otel_endpoint,
+            seed_paths=tuple(seed_file or ()),
         )
         result = run_fuzz(
             config, sandbox=DockerSandbox(infra_hosts=adapter.infra_hosts), store=RunStore(out)
@@ -614,3 +632,44 @@ def verify(
 
     typer.echo(f"\n{not_fixed} of {len(entries)} finding(s) not fixed")
     raise typer.Exit(1 if not_fixed else 0)
+
+
+seeds_app = typer.Typer(help="Manage the seed corpus.", no_args_is_help=True)
+app.add_typer(seeds_app, name="seeds")
+
+
+@seeds_app.command("import")
+def seeds_import(
+    path: Annotated[Path, typer.Argument(help="Corpus file, or a directory of AgentDojo logs")],
+    source_format: Annotated[str, typer.Option("--format", help="promptfoo | agentdojo | jsonl")],
+    dest: Annotated[Path, typer.Option("--out", help="Seed file to write")] = Path(
+        "seeds/imported.yaml"
+    ),
+    force: Annotated[bool, typer.Option(help="Replace an existing seed file")] = False,
+) -> None:
+    """Import seeds from an external attack corpus, verbatim and attributed."""
+    from reprobe.seeds.importers import IMPORTERS, UNTARGETED_TAG, write_seed_file
+
+    importer = IMPORTERS.get(source_format)
+    if importer is None:
+        typer.echo(
+            f"error: unknown format {source_format!r}; one of {', '.join(IMPORTERS)}", err=True
+        )
+        raise typer.Exit(2)
+    try:
+        seeds = importer(path)
+        written = write_seed_file(seeds, dest, force=force)
+    except ReprobeError as exc:
+        hint = " (pass --force to replace it)" if dest.exists() and not force else ""
+        typer.echo(f"error: {exc}{hint}", err=True)
+        raise typer.Exit(2) from exc
+
+    untargeted = sum(UNTARGETED_TAG in s.tags for s in seeds)
+    typer.echo(f"imported {len(seeds)} seed(s) to {written}")
+    if untargeted:
+        typer.echo(
+            f"{untargeted} of them are untargeted: their text never names {{{{ canary_path }}}}, "
+            "so they test an injection's framing and can reach a violation only if the agent "
+            "goes after the canary on its own. Kept verbatim; tagged `untargeted`."
+        )
+    typer.echo(f"next: reprobe fuzz SCENARIO --seed-file {written}")

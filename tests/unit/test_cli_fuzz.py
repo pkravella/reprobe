@@ -94,3 +94,46 @@ def test_a_zero_dollar_cap_does_not_block_a_free_agent(tmp_path, monkeypatch, fa
         "6",
     )
     assert "trials            6" in out.output
+
+
+def test_fuzz_loads_extra_seed_files_and_reports_untargeted_ones(
+    tmp_path, monkeypatch, fake_clean_sandbox
+):
+    from reprobe.seeds.importers import import_agentdojo, write_seed_file
+
+    seeds = write_seed_file(
+        import_agentdojo(__import__("pathlib").Path("tests/data/agentdojo-sample")),
+        tmp_path / "imported.yaml",
+    )
+    out = _invoke(
+        tmp_path, monkeypatch, fake_clean_sandbox, "--trials", "3", "--seed-file", str(seeds)
+    )
+    assert out.exit_code == 0, out.output
+    assert "26 seed(s)" in out.output
+    assert "2 untargeted" in out.output
+
+
+def test_the_seed_files_reach_the_search_not_just_the_count(tmp_path, monkeypatch):
+    """The CLI loads the files itself to count them, so the count alone would
+    read right even if the search never got them."""
+    import reprobe.loop as loop
+
+    seen = {}
+
+    def capture(config, **kwargs):
+        seen["paths"] = config.seed_paths
+        raise SystemExit(0)
+
+    monkeypatch.setattr(loop, "fuzz", capture)
+    seeds = tmp_path / "s.yaml"
+    seeds.write_text("[]\n")
+    _invoke(tmp_path, monkeypatch, object(), "--seed-file", str(seeds))
+    assert seen["paths"] == (seeds,)
+
+
+def test_fuzz_reports_a_bad_seed_file_cleanly(tmp_path, monkeypatch, fake_clean_sandbox):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("not: a list")
+    out = _invoke(tmp_path, monkeypatch, fake_clean_sandbox, "--seed-file", str(bad))
+    assert out.exit_code == 2
+    assert "bad.yaml" in out.output
