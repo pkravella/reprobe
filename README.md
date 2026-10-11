@@ -6,7 +6,7 @@ Reprobe runs a coding agent on legitimate tasks in a disposable sandbox, mutates
 
 ---
 
-> ### Status: v0.1 built, not yet released
+> ### Status: v0.1.0
 >
 > Everything in the PRD's P0 set is built, plus seed import (R14), duplicate
 > grouping (R16) and the finding report (R17): scenarios and a pack of ten, the
@@ -18,7 +18,7 @@ Reprobe runs a coding agent on legitimate tasks in a disposable sandbox, mutates
 > Every milestone is measured on the free fake-agent lane, and
 > [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md) is explicit about what each
 > measurement does **not** show. The headline benchmark **missed** its target;
-> see [Benchmark](#benchmark). Until the first release, install from source.
+> see [Benchmark](#benchmark).
 
 ---
 
@@ -56,6 +56,23 @@ Reprobe is a search, shrink and regression layer for exactly those three gaps. I
 - **Search.** Template and structural mutators, with a coverage-guided scheduler that spends budget on inputs reaching new agent behaviour. A blind random-mutation mode ships alongside it as the comparison baseline.
 - **Triage.** Every candidate is re-run to estimate its reproduction rate with a Wilson interval, then delta-debugged down to a minimal payload — accepting a cut only when the interval's *lower bound* stays above threshold. The claim that bound makes is one-sided on purpose: read it as "we are not fooling ourselves that this reproduces". Sampling stops early when the answer is already clear, and early stopping is optional stopping, so the nominal 95% is not a calibrated two-sided figure — measured at 88.5% coverage for a true rate just above the threshold. The decision it drives errs toward rejecting: payloads that truly reproduce 20% of the time are accepted 2% of the time. Numbers in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
 - **Export.** A self-contained pytest suite and, if asked, a GitHub Action, pinned to agent version, model id and container digest. Each test re-measures its exploit and passes only once the whole interval sits below the threshold, so a test that cannot tell, or never ran, does not pass. More in [docs/architecture.md](docs/architecture.md).
+
+## Install
+
+```bash
+uv tool install reprobe-agents        # the `reprobe` command
+```
+
+The sandbox images are built from the repository, not pulled from a registry,
+so a trial also needs a checkout of the same release:
+
+```bash
+git clone --branch v0.1.0 https://github.com/pkravella/reprobe
+make -C reprobe base mockgw fakeagent   # add claude-code / codex-cli for real agents
+```
+
+A finding's container digest is therefore the id of the image you built: it
+records what ran, and it differs between platforms.
 
 ## Try it, for nothing
 

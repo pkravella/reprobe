@@ -1,0 +1,152 @@
+# Release: a `v*` tag builds, checks, publishes to PyPI and cuts a GitHub release.
+#
+# Three jobs, so that only the one that uploads can mint a PyPI token:
+#
+#   build           checks, tag/version guard, build, wheel sanity  (read-only)
+#   publish         downloads the built files, uploads to PyPI      (id-token)
+#   github-release  attaches the same files to a GitHub release     (contents)
+#
+# `publish` runs in the `pypi` environment, which is both the identity PyPI's
+# trusted publisher expects and the place a required reviewer approves the
+# upload. No secret is involved: PyPI trusts the workflow, not a token.
+# Caching is off throughout -- a release should not build from a cache another
+# workflow could have written.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Install
+        run: uv sync --all-extras --dev
+
+      - name: The tag must name the package's version
+        run: |
+          version="$(uv run python -c 'import reprobe; print(reprobe.__version__)')"
+          echo "tag=${GITHUB_REF_NAME} __version__=${version}"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package version ${version}"
+            exit 1
+          fi
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -q
+
+      - name: Build
+        run: uv build
+
+      # The classic failure for this layout: templates missing from the wheel,
+      # or the module shipped under the distribution's name.
+      - name: Check what the wheel contains
+        run: |
+          unzip -l dist/*.whl > contents.txt
+          grep -q "reprobe/export/templates/test_finding.py.j2" contents.txt
+          grep -q "reprobe/export/templates/workflow.yml.j2" contents.txt
+          grep -q "reprobe/export/templates/report.html.j2" contents.txt
+          ! grep -q "reprobe_agents/" contents.txt
+          grep -q "licenses/LICENSE" contents.txt
+          grep -q "licenses/NOTICE" contents.txt
+
+      - name: Install the wheel cleanly and run it
+        # From /tmp, so the checkout's src/ cannot stand in for the wheel.
+        working-directory: /tmp
+        run: |
+          uv venv /tmp/clean
+          uv pip install --python /tmp/clean "$GITHUB_WORKSPACE"/dist/*.whl
+          /tmp/clean/bin/reprobe --version
+          /tmp/clean/bin/python -c '
+          from importlib.metadata import distribution
+          import reprobe
+          from reprobe.export.pytest_export import render_conftest
+          assert distribution("reprobe-agents").metadata["Name"] == "reprobe-agents"
+          assert reprobe.__file__.startswith("/tmp/clean"), reprobe.__file__
+          assert "REPROBE_REGRESSION_TESTS" in render_conftest([])
+          print("wheel ok", reprobe.__version__)
+          '
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/reprobe-agents/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Publish
+        run: uv publish --trusted-publishing always dist/*
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create the release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/       { exit }
+            found                   { print }
+          ' CHANGELOG.md \
+            | sed -E "s|\]\(([^):#][^):]*)\)|](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/\1)|g" \
+            > notes.md
+          test -s notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Reprobe $version" --notes-file notes.md
