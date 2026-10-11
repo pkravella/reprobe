@@ -116,4 +116,4 @@ Imported seeds keep their origin in `source`. The test fixtures for these import
 
 ## Responsible use
 
-This is a corpus of prompt-injection templates in a public repository. It targets synthetic canaries in a disposable sandbox with no route to the internet. If you find a real flaw in a third-party agent using it, a coordinated-disclosure guide ships with v0.1; until then see [SECURITY.md](../SECURITY.md).
+This is a corpus of prompt-injection templates in a public repository. It targets synthetic canaries in a disposable sandbox with no route to the internet. If you find a real flaw in a third-party agent using it, see [disclosure.md](disclosure.md).

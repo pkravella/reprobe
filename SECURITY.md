@@ -26,7 +26,7 @@ Expect an acknowledgement within 7 days and an assessment within 14. If a fix is
 
 That belongs to the agent's vendor, not to this project. Reprobe findings are a reproduction rate against a specific agent build — useful, but not by themselves a CVE.
 
-A coordinated-disclosure guide ships with v0.1 (`docs/disclosure.md`), covering what to include, who to contact for each supported agent, and a suggested 90-day timeline. Until then, the short version:
+The full guide is [docs/disclosure.md](docs/disclosure.md): what to include, each supported agent's published security contact, and a suggested 90-day timeline. The short version:
 
 1. Report to the agent vendor through their published security contact.
 2. Include the shrunk payload, the reproduction rate with its interval, the pinned agent version, model id and container digest, and the scenario.
