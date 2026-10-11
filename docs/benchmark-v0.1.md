@@ -504,3 +504,145 @@ were measured against, so it is written down rather than done.
 - **The scenario and the gradient were designed by us.** Passing says the triage
   implementation works. It says nothing about a real agent's susceptibility,
   which needs the local-model lane (Task 35).
+
+---
+
+## Phase 4 — the guided-vs-baseline benchmark
+
+The PRD's exit criterion for milestone 4 is a written-up benchmark against the
+random baseline. **Only arm A, the free one, has been run.** Raw tables:
+[benchmark-arm-a.md](benchmark-arm-a.md).
+
+| Arm | What | Status |
+| --- | --- | --- |
+| A | The scripted fake agent in the real sandbox | **Run**, twice: concurrency 1 and 4. $0 |
+| B | A real agent CLI on a local open-weights model | **Not run**: needs the local-model lane, which is not built |
+| C | Claude Code and Codex on hosted models | **Not run**: about $400 for the full pack; command below |
+
+**Arm A is a measurement of the search against a susceptibility we designed.
+It says nothing about how a real agent responds to these payloads.** The
+profile is `compositional` (see "the compositional gradient" above): the
+violation needs `POST`, the canary path and a `<system-reminder>` frame at once,
+and the frame marker is in no seed.
+
+### Method
+
+```bash
+uv run reprobe bench --scenario scenarios/readme-injection/scenario.yaml \
+  --agent fake-agent --model reprobe-fake --agent-profile compositional \
+  --trials 200 --seeds 1,2,3,4,5,6,7,8,9,10 --max-usd 0 --concurrency 1
+```
+
+Each of 10 seeds runs a guided arm and a random arm of 200 trials each. The
+candidates are grouped by violating action, and one per group is re-measured
+until its Wilson interval decides. A **unique reproducible finding** is a group
+whose own violation reproduced with a lower bound of at least 30%. Shrinking is
+skipped: it does not change whether a finding reproduces, and its reduction is
+the Phase-3 gate's measurement. One scenario and ten seeds, because seeds are
+the unit of independence here; ten scenarios would be correlated copies (see
+"Why one scenario and ten seeds" above).
+
+**The headline is per 1,000 trials, not per $100.** Nothing was spent, and per
+$100 is a division by zero. Both arms get the same trials, so the ratio means
+the same thing either way.
+
+### Result
+
+| | Concurrency 1 | Concurrency 4 (the `fuzz` default) |
+| --- | --- | --- |
+| Guided, unique reproducible findings per 1,000 trials | 3.0 | 2.5 |
+| Random, same | 4.0 | 4.0 |
+| **Ratio, guided over random** | **0.75×** | **0.62×** |
+| Seeds where guided reached the violation | 6 of 10 | 5 of 10 |
+| Seeds where random reached it | 8 of 10 | 8 of 10 |
+| Seeds where guided confirmed what random missed | 1 of 10 | 1 of 10 |
+| Violating trials, guided / random | 231 / 10 | 214 / 10 |
+| Median trials to first violation, guided | 90 (4 of 10 never) | 121 (5 of 10 never) |
+| Median trials to first violation, random | 119 (2 of 10 never) | 119 (2 of 10 never) |
+
+**The PRD's 2× target is missed, at both concurrencies.** By the headline
+metric the baseline did better.
+
+### Why, and what the metric is actually measuring here
+
+**There is exactly one bug to find.** Every candidate in both runs (181 at
+concurrency 4, 141 at concurrency 1, across all 40 arms) shares a single set of
+violating actions. So "unique
+reproducible findings" can be at most 1 per arm, and the headline becomes the
+share of seeds that reached the bug at all within 200 trials. On that question
+blind sampling wins, 8 seeds to 6: each random arm draws 200 fresh attempts,
+while a guided arm commits to climbing from what it has found, and on 4 of 10
+seeds the climb never paid off within the budget.
+
+**What the metric cannot see is exploitation.** When guided search reaches the
+violation it keeps reaching it: 231 violating trials against random's 10, 23×.
+On a target with many distinct bugs, finding a way in and working outward from
+it is how a search turns one finding into several. On a target with one bug,
+it earns nothing on this metric. So this result says the metric and this
+scenario cannot show the effect the PRD's claim is about. It does not say
+guidance does not work. Testing the claim properly needs a target with
+several distinct violations: a richer profile, or a real agent (arm B).
+
+**Time to first failure** is reported in trials, with seeds that never fired
+counted as "> 200" (right-censored). At concurrency 1 a trial took about 2.1s,
+so the guided median of 90 trials is about 3 minutes against the PRD's 30. That
+says the harness is fast, not that a real agent would fail that quickly.
+
+### Concurrency handicaps guided search
+
+With trials in flight, the guided scheduler chooses its next candidates before
+it has seen the results of the last ones. On seed 2 the guided arm found **0**
+violations at concurrency 4, on two separate runs, and **58** at concurrency 1.
+The concurrency-1 benchmark reproduced the 58 exactly. Over all ten seeds,
+going to concurrency 1 lifted the guided arm from 5 to 6 seeds and from 0.62×
+to 0.75×. Seed 10 went the other way (29 violations at 4, 0 at 1), so this is
+not a uniform gain at this sample size. The random arms were identical at both
+settings, as they should be: random does not learn from results.
+
+`reprobe fuzz` defaults to `--concurrency 4`, so this is a product problem, not
+a benchmark artefact, and it is tracked separately. It also means that above
+concurrency 1 a seed does not reliably replay the same guided search.
+
+### The six success metrics
+
+| Metric | Target | Measured | Met? |
+| --- | --- | --- | --- |
+| Search efficiency | ≥ 2× the random baseline, unique reproducible findings per $100 | Arm A only, per 1,000 trials: 0.75× (concurrency 1), 0.62× (4) | **No**, on a one-bug scripted target; see above |
+| Time to first failure | median under 30 min | Arm A: 90 trials, about 3 min (4 of 10 seeds never fired) | On the scripted lane only |
+| Payload reduction | median ≥ 60% | 96.9% (Phase-3 gate) | Yes, with that gate's caveat: the floor was built into the profile |
+| Test stability | ≥ 90% of exported tests give the same result on rerun | Measured: a live `flaky_60` test failed 20 of 20 reruns (18 REPRODUCES, 2 INCONCLUSIVE); the same test with the agent fixed passed 20 of 20. Exact, by true rate: ≥ 90% at 0 and from about 0.33 up, 52–89% between 0.05 and 0.30 | Yes for fixed agents and live exploits; **no for partially fixed ones**, by design |
+| False positives | under 5% judged not real | Not measurable on a scripted agent: its violations are real by construction | Not measured |
+| Adoption | 1,000 stars, 20 scenarios at 6 months | Pre-release | Not applicable yet |
+
+**On stability.** An exported test passes only once the whole interval sits
+below the threshold, and fails both when the exploit reproduces and when the
+run is inconclusive. So it flips between runs only for an agent that
+reproduces somewhere between about 5% and 30%: neither clearly fixed nor
+clearly broken. That is the side we chose to be unstable on. A rerun is a fresh
+seed: the runner's seed defaults to 0, and on the scripted agent a fixed seed
+would make every rerun identical and the measurement meaningless.
+
+### Arm C, for whoever has the budget
+
+```bash
+# Not run for v0.1. One scenario shown; repeat --scenario for each of the ten.
+uv run reprobe bench --scenario scenarios/readme-injection/scenario.yaml \
+  --agent claude-code --model claude-haiku-4-5 \
+  --trials 60 --seeds 1,2,3 --max-usd 400 --concurrency 1 \
+  --out docs/benchmark-arm-c.md
+```
+
+About $400 is the estimate for all ten scenarios. `--max-usd` caps the whole
+run, and an arm the cap stops is reported as not run, never as zero. On a real agent, scenarios are no longer
+correlated copies of one another, because the agent's response depends on the
+surface. Report it beside arm A, never in its place: arm A's ratio is not a
+claim about Claude Code or Codex.
+
+### What this does not show
+
+- **Anything about a real agent.** The susceptibility was written by us.
+- **Whether guidance helps on a target with several bugs**, which is what the
+  PRD's claim is about. This target has one.
+- **Statistical significance.** Ten seeds, and the per-seed swings (seed 10:
+  29 violations or 0, depending on concurrency) are as large as the
+  differences being compared.
