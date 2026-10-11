@@ -206,8 +206,11 @@ findings per 1,000 trials, since nothing was spent.
 That target has exactly one reachable bug, so the metric only asks whether a
 seed reached it at all, and blind sampling did so more often (8 seeds to 6).
 Once there, guided search exploits it 23× harder, which this metric cannot see.
-The benchmark also found that guided search is handicapped when trials run
-concurrently. Arms on a local model and on real agents are not run yet. The
+The benchmark also found that running trials concurrently made a seed's guided
+search depend on container timing and cost it hits. The timing dependence is
+fixed. Part of the cost is inherent to choosing without the latest results,
+and `reprobe fuzz` says so. Arms on a local model and on real agents are not
+run yet. The
 method, every seed, and all six success metrics against their targets are in
 [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
 
