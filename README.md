@@ -198,14 +198,15 @@ each trial is dispatched, not reported afterwards.
 
 ## Benchmark
 
-**Guided search against the random baseline: 0.75× at concurrency 1 and 0.62×
+**Guided search against the random baseline: 0.75× at concurrency 1 and 0.88×
 at concurrency 4, against a target of 2×. Missed.** Measured on the scripted
 fake agent: one scenario, ten seeds, 200 trials per arm, and unique reproducible
 findings per 1,000 trials, since nothing was spent.
 
 That target has exactly one reachable bug, so the metric only asks whether a
-seed reached it at all, and blind sampling did so more often (8 seeds to 6).
-Once there, guided search exploits it 23× harder, which this metric cannot see.
+seed reached it at all, and blind sampling did so more often (8 seeds to 6 or
+7). Once there, guided search exploits it 23× to 33× harder, which this metric
+cannot see.
 The benchmark also found that running trials concurrently made a seed's guided
 search depend on container timing and cost it hits. The timing dependence is
 fixed. Part of the cost is inherent to choosing without the latest results,

@@ -515,7 +515,7 @@ random baseline. **Only arm A, the free one, has been run.** Raw tables:
 
 | Arm | What | Status |
 | --- | --- | --- |
-| A | The scripted fake agent in the real sandbox | **Run**, twice: concurrency 1 and 4. $0 |
+| A | The scripted fake agent in the real sandbox | **Run** at concurrency 1 and 4 (and 4 again after a fix). $0 |
 | B | A real agent CLI on a local open-weights model | **Not run**: needs the local-model lane, which is not built |
 | C | Claude Code and Codex on hosted models | **Not run**: about $400 for the full pack; command below |
 
@@ -550,32 +550,43 @@ the same thing either way.
 
 | | Concurrency 1 | Concurrency 4 (the `fuzz` default) |
 | --- | --- | --- |
-| Guided, unique reproducible findings per 1,000 trials | 3.0 | 2.5 |
+| Guided, unique reproducible findings per 1,000 trials | 3.0 | 3.5 |
 | Random, same | 4.0 | 4.0 |
-| **Ratio, guided over random** | **0.75×** | **0.62×** |
-| Seeds where guided reached the violation | 6 of 10 | 5 of 10 |
+| **Ratio, guided over random** | **0.75×** | **0.88×** |
+| Seeds where guided reached the violation | 6 of 10 | 7 of 10 |
 | Seeds where random reached it | 8 of 10 | 8 of 10 |
 | Seeds where guided confirmed what random missed | 1 of 10 | 1 of 10 |
-| Violating trials, guided / random | 231 / 10 | 214 / 10 |
-| Median trials to first violation, guided | 90 (4 of 10 never) | 121 (5 of 10 never) |
+| Violating trials, guided / random | 231 / 10 | 326 / 10 |
+| Median trials to first violation, guided | 90 (4 of 10 never) | 91 (3 of 10 never) |
 | Median trials to first violation, random | 119 (2 of 10 never) | 119 (2 of 10 never) |
 
+The concurrency-4 column is the rerun on the fixed loop (see "Concurrency"
+below). The first concurrency-4 run, before the fix, scored 0.62×, with guided
+reaching the violation on 5 seeds and making 214 violating trials.
+
 **The PRD's 2× target is missed, at both concurrencies.** By the headline
-metric the baseline did better.
+metric the baseline did better. The two columns differ by one seed in ten, which
+is noise at this sample size. The 40-seed measurement below still puts
+concurrency 1 ahead.
+
+Above concurrency 1, "trials to first violation" counts trials in the order they
+finished, which can differ from the order they were dispatched by up to the
+concurrency.
 
 ### Why, and what the metric is actually measuring here
 
-**There is exactly one bug to find.** Every candidate in both runs (181 at
-concurrency 4, 141 at concurrency 1, across all 40 arms) shares a single set of
-violating actions. So "unique
+**There is exactly one bug to find.** Every candidate in all three runs (141 at
+concurrency 1, 181 and 273 in the two concurrency-4 runs, across all 60 arms)
+shares a single set of violating actions. So "unique
 reproducible findings" can be at most 1 per arm, and the headline becomes the
 share of seeds that reached the bug at all within 200 trials. On that question
-blind sampling wins, 8 seeds to 6: each random arm draws 200 fresh attempts,
-while a guided arm commits to climbing from what it has found, and on 4 of 10
-seeds the climb never paid off within the budget.
+blind sampling wins, 8 seeds to 6 or 7: each random arm draws 200 fresh
+attempts, while a guided arm commits to climbing from what it has found, and on
+3 or 4 of 10 seeds the climb never paid off within the budget.
 
 **What the metric cannot see is exploitation.** When guided search reaches the
-violation it keeps reaching it: 231 violating trials against random's 10, 23×.
+violation it keeps reaching it: 231 and 326 violating trials against random's
+10, 23× to 33×.
 On a target with many distinct bugs, finding a way in and working outward from
 it is how a search turns one finding into several. On a target with one bug,
 it earns nothing on this metric. So this result says the metric and this
@@ -625,15 +636,16 @@ Each arrow is before → after the fix. **Two separate problems, one fixed:**
   runs the guided scheduler above concurrency 1. When trials, not time, are the
   scarce thing (a paid agent), use `--concurrency 1`.
 
-**Arm A's concurrency-4 run above predates the fix.** Its guided numbers were
-measured with completion-order absorption. The concurrency-1 run is unaffected:
-at concurrency 1 the two orders are the same.
+**Arm A at concurrency 4, before and after the fix:** 0.62× → 0.88×, guided
+reaching the violation on 5 → 7 seeds, 214 → 326 violating trials. Seed 2,
+which found 0 twice before the fix, found 69. The concurrency-1 run needed no
+rerun, because at concurrency 1 the two orders are the same.
 
 ### The six success metrics
 
 | Metric | Target | Measured | Met? |
 | --- | --- | --- | --- |
-| Search efficiency | ≥ 2× the random baseline, unique reproducible findings per $100 | Arm A only, per 1,000 trials: 0.75× (concurrency 1), 0.62× (4) | **No**, on a one-bug scripted target; see above |
+| Search efficiency | ≥ 2× the random baseline, unique reproducible findings per $100 | Arm A only, per 1,000 trials: 0.75× (concurrency 1), 0.88× (4) | **No**, on a one-bug scripted target; see above |
 | Time to first failure | median under 30 min | Arm A: 90 trials, about 3 min (4 of 10 seeds never fired) | On the scripted lane only |
 | Payload reduction | median ≥ 60% | 96.9% (Phase-3 gate) | Yes, with that gate's caveat: the floor was built into the profile |
 | Test stability | ≥ 90% of exported tests give the same result on rerun | Measured: a live `flaky_60` test failed 20 of 20 reruns (18 REPRODUCES, 2 INCONCLUSIVE); the same test with the agent fixed passed 20 of 20. Exact, by true rate: ≥ 90% at 0 and from about 0.33 up, 52–89% between 0.05 and 0.30 | Yes for fixed agents and live exploits; **no for partially fixed ones**, by design |
