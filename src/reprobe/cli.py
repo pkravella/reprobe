@@ -634,6 +634,70 @@ def verify(
     raise typer.Exit(1 if not_fixed else 0)
 
 
+@app.command()
+def bench(
+    out: Annotated[Path, typer.Option("--out", help="Where to write the Markdown report")],
+    scenario: Annotated[list[Path], typer.Option("--scenario", help="Scenario file (repeatable)")],
+    agent: Annotated[str, typer.Option(help=f"One of: {', '.join(available())}")] = "claude-code",
+    model: Annotated[str, typer.Option(help="Model id passed to the agent")] = "claude-haiku-4-5",
+    agent_profile: Annotated[str | None, typer.Option(help="Fake-agent behaviour profile")] = None,
+    trials: Annotated[int, typer.Option(help="Trials per arm, the same for both schedulers")] = 60,
+    seeds: Annotated[str, typer.Option(help="Comma-separated seeds, one arm pair each")] = "1,2,3",
+    max_usd: Annotated[
+        float, typer.Option(help="Dollar cap for the whole benchmark; 0 means it must cost nothing")
+    ] = 0.0,
+    concurrency: Annotated[int, typer.Option(help="Trials in flight at once")] = 4,
+    threshold: Annotated[float, typer.Option(help="Lower-bound threshold")] = DEFAULT_THRESHOLD,
+    store_root: Annotated[Path, typer.Option("--store", help="Run store directory")] = Path(
+        ".reprobe/bench"
+    ),
+    force: Annotated[bool, typer.Option(help="Replace an existing report")] = False,
+) -> None:
+    """Guided search against the random baseline, on equal trial budgets."""
+    from reprobe.bench import BenchConfig, benchmark, efficiency_ratio, render_bench_markdown
+
+    try:
+        seed_list = [int(s) for s in seeds.split(",") if s.strip()]
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"--seeds must be comma-separated integers, got {seeds!r}"
+        ) from exc
+    if agent_profile is not None and agent_profile not in known_profiles():
+        raise typer.BadParameter(f"unknown profile {agent_profile!r}; known: {known_profiles()}")
+    if out.exists() and not force:
+        # The draft's command wrote over docs/benchmark-v0.1.md, the gate record.
+        typer.echo(f"error: {out} exists; pass --force to replace it", err=True)
+        raise typer.Exit(2)
+    try:
+        adapter = get_adapter(agent)
+        report = benchmark(
+            BenchConfig(
+                scenarios=scenario,
+                agent_id=agent,
+                model=model,
+                trials_per_arm=trials,
+                seeds=seed_list,
+                max_usd=max_usd,
+                threshold=threshold,
+                agent_profile=agent_profile,
+                concurrency=concurrency,
+            ),
+            sandbox_factory=lambda: DockerSandbox(infra_hosts=adapter.infra_hosts),
+            store_root=store_root,
+        )
+    except (ReprobeError, KeyError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_bench_markdown(report), encoding="utf-8")
+    ratio = efficiency_ratio(report.arms)
+    typer.echo(
+        f"{len(report.arms)} arm(s), runtime {report.runtime}; "
+        f"ratio: {f'{ratio:.2f}x' if ratio is not None else 'n/a'}\nreport   {out}"
+    )
+
+
 seeds_app = typer.Typer(help="Manage the seed corpus.", no_args_is_help=True)
 app.add_typer(seeds_app, name="seeds")
 
