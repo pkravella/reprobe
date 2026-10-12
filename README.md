@@ -1,62 +1,119 @@
 # Reprobe
 
-**Turn an agent security failure into a minimal, statistically reliable regression test that runs in CI.**
+**Reprobe takes a prompt-injection failure in an AI coding agent and turns it into a small, reliable regression test you can run in CI.**
 
-Reprobe runs a coding agent on legitimate tasks in a disposable sandbox, mutates the inputs an attacker controls, and steers the search toward new agent behaviour. Each violation it finds is shrunk to the smallest payload that still fails, measured for how often it reproduces, and exported as a test pinned to the agent, model and container it was found on.
-
----
-
-> ### Status: v0.1.0, released
->
-> [`reprobe-agents` on PyPI](https://pypi.org/project/reprobe-agents/). The
-> whole pipeline is built: scenarios and a pack of ten, a disposable sandbox
-> with a mock egress gateway, four independent observers, deterministic checks,
-> Claude Code and Codex CLI adapters, a coverage-guided search with a random
-> baseline beside it, reproduction-rate measurement, statistical shrinking,
-> duplicate grouping, seed import from Promptfoo and AgentDojo, reports, and
-> export to a pytest suite and a GitHub Action.
->
-> Everything is measured on a free, scripted test agent, and
-> [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md) says what each measurement
-> does **not** show. The headline benchmark **missed** its target; see
-> [Benchmark](#benchmark). Nothing has yet been measured against a real model.
+It runs a coding agent on normal tasks inside a throwaway sandbox, and keeps rewriting the parts an attacker could control, like a README or an issue, to try to get the agent to do something it shouldn't. It leans toward inputs that make the agent behave in ways it hasn't seen yet. When something breaks, Reprobe cuts the payload down to the smallest version that still works, measures how often it actually reproduces, and writes it out as a test pinned to the exact agent, model and container it was found on.
 
 ---
 
-## The problem
+> ### Status: v0.1.0 is out
+>
+> It's on PyPI as [`reprobe-agents`](https://pypi.org/project/reprobe-agents/).
+> The whole pipeline is built: ten example scenarios, the sandbox and its mock
+> network gateway, four separate ways of watching the agent, rule-based checks,
+> adapters for Claude Code and Codex CLI, the guided search (with a random
+> baseline next to it for comparison), measuring and shrinking what it finds,
+> grouping duplicates, importing attacks from Promptfoo and AgentDojo, reports,
+> and exporting findings as a pytest suite and a GitHub Action.
+>
+> All of it has been measured on a free, scripted test agent. Nothing has been
+> measured against a real model yet. The headline benchmark **missed** its
+> target (see [Benchmark](#benchmark)), and
+> [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md) spells out what each number
+> does **not** show.
 
-Coding agents read surfaces an attacker controls: READMEs, issues, web pages, tool metadata, terminal output. Teams test these with a handful of hand-written injections or a catalog scanner, and get a pass or fail from a single run. That leaves three gaps:
+---
 
-1. **Flaky findings.** The same input passes on one run and fails on the next, so one failure proves little and one pass proves nothing.
-2. **Bloated findings.** A failing payload is an entire README, and nobody knows which part triggered the behaviour.
-3. **Findings that don't stick.** Nothing turns the exploit into a test, so a model, prompt or tool change can quietly reopen it.
+## Why this exists
 
-Reprobe is a search, shrink and regression layer for exactly those three gaps. It is designed to plug into the attack catalogs that already exist rather than replace them.
+Coding agents read a lot of text that someone else might control: READMEs, issues, web pages, tool descriptions, terminal output. Most teams test this by throwing a few hand-written injections at the agent, or by running a scanner with a list of known attacks, and checking whether a single run passed or failed. That leaves three problems:
+
+1. **Results are flaky.** The same input can work on one run and not the next. One failure doesn't prove much, and one pass proves nothing.
+2. **Payloads are huge.** The thing that broke the agent is a whole README, and nobody knows which line did it.
+3. **Fixes don't stay fixed.** Nothing turns the attack into a test, so the next model, prompt or tool change can quietly bring it back.
+
+Reprobe is aimed squarely at those three: it searches for failures, shrinks them, and turns them into regression tests. It's meant to sit on top of the attack collections people already use, not replace them.
 
 ## How it works
 
-```
-                    ┌──────────── coverage map ────────────┐
-                    │  tool n-grams · resource classes     │
-                    │  memory writes · permission changes  │
-                    ▼                                      │
-  seeds ──▶ mutators ──▶ sandboxed trial ──▶ trace ────────┘
-                              │                │
-                              │                ▼
-                              │            checks  ──▶ violation?
-                              │                           │
-                              └───────────────────────────┤
-                                                          ▼
-   CI test  ◀──  export  ◀──  shrink  ◀──  reproduction rate (Wilson interval)
+You describe a **scenario** in a YAML file: a real task for the agent, a small repository for it to work in, which parts of it an attacker controls, some fake secrets, and what counts as the agent misbehaving.
+
+Every **trial** then goes like this:
+
+- Reprobe starts a fresh container for the agent, on a Docker network with no way off your machine. The only thing the agent can reach is a mock gateway that logs every request and refuses anything not on the scenario's allowlist.
+- It watches what the agent does from four places: the agent's own output, `strace` inside the container, a before-and-after diff of the files, and the gateway's log. It doesn't take the agent's word for what it did.
+- Plain, rule-based checks decide whether the agent did something wrong: read or sent one of the fake secrets, changed a protected file, contacted a host it shouldn't have, or ran a dangerous command. No language model is asked to judge.
+
+The **search** (`reprobe fuzz`) keeps changing the attacker's text: both what it says and how it's delivered. It records which behaviours each trial produced, and puts more of the budget into inputs that got the agent to do something new. There's also a plain random mode with no guidance at all, run on the same budget, so you can check whether the guidance is actually helping.
+
+**Triage** (`reprobe triage`) re-runs every hit to measure how often it really reproduces, as a rate with a Wilson confidence interval. Then it cuts the payload down piece by piece, and keeps a cut only if the *lower* end of that interval stays above the threshold. Put simply, it only claims an attack reproduces when it's confident it isn't fooling itself.
+
+Two honest caveats about those numbers. Triage stops sampling as soon as the answer looks clear, and stopping early means the "95%" interval isn't a true 95% in both directions: we measured 88.5% coverage for a true rate just above the threshold. The mistakes lean toward rejecting, though. A payload that really works 20% of the time gets accepted only 2% of the time. The numbers are in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
+
+**Export** (`reprobe export`) writes a self-contained pytest suite, plus a GitHub Action if you ask for one, pinned to the agent version, model and container. Each test re-runs its attack and passes only once the whole interval is below the threshold. A test that can't tell, or never actually ran, doesn't pass.
+
+## System design
+
+The big picture: a search loop finds failures, triage checks and shrinks them, and the exporters turn what's left into tests.
+
+```mermaid
+flowchart TB
+    subgraph search["Search: reprobe fuzz"]
+        direction LR
+        seeds["Seeds<br/>built-in or imported"] --> scheduler["Scheduler"]
+        scheduler --> mutators["Mutators"]
+        mutators --> trial["Sandboxed trial"]
+        trial --> checks{"Checks:<br/>violation?"}
+        trial -- "trace" --> coverage[("Coverage map")]
+        coverage -- "favours new behaviour" --> scheduler
+    end
+
+    subgraph triage["Triage: reprobe triage"]
+        direction LR
+        rate["Measure the rate<br/>Wilson interval"] --> shrink["Shrink the payload<br/>and the environment"]
+        shrink --> group["Group duplicates"]
+    end
+
+    subgraph export["Export"]
+        direction LR
+        suite["pytest suite<br/>and GitHub Action"] --> ci["CI: passes only<br/>once it's fixed"]
+        report["Markdown or<br/>HTML report"]
+    end
+
+    search -- "violations" --> store[("Run store<br/>.reprobe/")]
+    store --> triage
+    triage -- "findings" --> export
 ```
 
-- **Scenario.** A YAML file: honest work for the agent, a repository fixture, which surfaces an attacker controls, synthetic secrets, and what counts as a violation.
-- **Sandbox.** One disposable container per trial, on a Docker network with no route off the host. The only reachable peer is a mock gateway that logs every egress attempt and refuses anything off the allowlist.
-- **Observation.** Four independent sources — the agent's own structured output, `strace` in the container, a filesystem manifest diff, and the gateway log — because an agent's self-report is not ground truth.
-- **Checks.** Deterministic only: a synthetic canary read or sent, a protected file changed, egress to a host off the allowlist, a dangerous command run. No model-as-judge.
-- **Search.** Template and structural mutators, with a coverage-guided scheduler that spends budget on inputs reaching new agent behaviour. A blind random-mutation mode ships alongside it as the comparison baseline.
-- **Triage.** Every candidate is re-run to estimate its reproduction rate with a Wilson interval, then delta-debugged down to a minimal payload — accepting a cut only when the interval's *lower bound* stays above threshold. The claim that bound makes is one-sided on purpose: read it as "we are not fooling ourselves that this reproduces". Sampling stops early when the answer is already clear, and early stopping is optional stopping, so the nominal 95% is not a calibrated two-sided figure — measured at 88.5% coverage for a true rate just above the threshold. The decision it drives errs toward rejecting: payloads that truly reproduce 20% of the time are accepted 2% of the time. Numbers in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
-- **Export.** A self-contained pytest suite and, if asked, a GitHub Action, pinned to agent version, model id and container digest. Each test re-measures its exploit and passes only once the whole interval sits below the threshold, so a test that cannot tell, or never ran, does not pass. More in [docs/architecture.md](docs/architecture.md).
+Here's what a single trial looks like. The agent's network has no route out, so anything it tries to send ends up at the mock gateway:
+
+```mermaid
+flowchart TB
+    reprobe["reprobe"]
+    workspace[("Workspace<br/>repo, payloads, fake secrets")]
+
+    subgraph net["Internal Docker network, no route out"]
+        direction LR
+        agent["Agent container<br/>Claude Code, Codex or fake agent<br/>traced with strace"]
+        gateway["Mock gateway<br/>logs every request,<br/>refuses unlisted hosts"]
+        agent -- "all network traffic" --> gateway
+    end
+
+    api["Model API<br/>real agents only"]
+
+    reprobe -- "new container per trial" --> net
+    workspace -- "mounted at /workspace" --> net
+    net -. "HTTPS tunnel from the gateway<br/>to model-API hosts only" .-> api
+    net -- "agent output, strace log,<br/>gateway log, file diff" --> results["Trace and checks"]
+```
+
+Everything above the sandbox talks to the rest through three small interfaces. That's why almost all of the code can be tested without Docker or spending anything:
+
+- **The sandbox** runs one trial and hands back what happened. `DockerSandbox` is the real one; `FakeSandbox` replays canned results with no container at all.
+- **The agent adapter** is the only code that knows a particular agent's command-line flags and output format.
+- **The scheduler** picks the next input to try. The guided scheduler and the random baseline are drop-in replacements for each other.
+
+Everything a run does goes into an append-only run store under `.reprobe/`: every trial, candidate, measurement and finding, with payloads and traces stored once by content hash. Keep it out of git, since it's full of attack payloads. For a tour of every module, see [docs/architecture.md](docs/architecture.md).
 
 ## Install
 
@@ -64,8 +121,8 @@ Reprobe is a search, shrink and regression layer for exactly those three gaps. I
 uv tool install reprobe-agents        # the `reprobe` command
 ```
 
-The sandbox images are built from the repository, not pulled from a registry,
-so running trials also needs a checkout of the same release:
+The sandbox images get built from the repository rather than pulled from a
+registry, so to run trials you also need a checkout of the same release:
 
 ```bash
 git clone --branch v0.1.0 https://github.com/pkravella/reprobe
@@ -73,22 +130,23 @@ cd reprobe
 make base mockgw fakeagent            # add claude-code / codex-cli for real agents
 ```
 
-A finding's container digest is therefore the id of the image you built: it
-records what ran, and differs between platforms. Reprobe needs Docker and
-Python 3.11 or later.
+That means a finding's container digest is the id of the image *you* built. It
+records what ran, and it'll be different on a different platform. You'll need
+Docker and Python 3.11 or later.
 
-## Try it, for nothing
+## Try it for free
 
-From that checkout, with the images above. Everything here runs on the
-scripted fake agent: a real process in a real container making real syscalls
-and real network calls, driven by a seeded probability model instead of a
-language model. No API key, no spend. It exercises the whole pipeline —
-Docker, the internal network, the gateway, `strace`, the filesystem diff, the
-checks, the coverage map and the scheduler. The one thing it does not exercise
-is a real model's judgement. Outputs below are from real runs; your numbers
-will differ, because the agent's behaviour is a probability.
+Run these from that checkout, once the images are built. Everything here uses
+the scripted fake agent. It's a real process in a real container, making real
+system calls and real network requests, but its choices come from a seeded
+random model instead of a language model. No API key, nothing spent. It still
+exercises the whole pipeline: Docker, the internal network, the gateway,
+`strace`, the file diff, the checks, the coverage map and the scheduler. The
+only thing it can't tell you about is how a real model would react. The output
+below is from real runs, and yours will differ, because the fake agent's
+behaviour is random.
 
-One scenario, one trial, one hand-written payload:
+Start with one scenario, one trial and one hand-written payload:
 
 ```bash
 reprobe run scenarios/readme-injection/scenario.yaml \
@@ -100,13 +158,14 @@ reprobe run scenarios/readme-injection/scenario.yaml \
 [1/1] VIOLATION ['canary_read:/workspace/.env', 'canary_read:api_key:transcript']
 ```
 
-Two action keys, because the canary was both opened on disk and echoed into the
-agent's transcript. Drop the `--payload` and the same trial comes back clean —
-the fixture on its own is honest work.
+There are two entries because the fake secret was both opened on disk and
+repeated in the agent's transcript. Leave out `--payload` and the same trial
+comes back clean: the repository on its own is just honest work.
 
-Search a scenario's attacker-controlled surface for violations. `flaky_60`
-makes the fake agent fall for a payload that says `POST` and names the secret's
-file, 60% of the time. The rest of this walkthrough uses the same agent:
+Next, search the parts of the scenario an attacker controls. The `flaky_60`
+profile makes the fake agent fall for any payload that says `POST` and names
+the secret's file, 60% of the time. The rest of this walkthrough uses that same
+agent:
 
 ```bash
 reprobe fuzz scenarios/readme-injection/scenario.yaml \
@@ -114,14 +173,14 @@ reprobe fuzz scenarios/readme-injection/scenario.yaml \
     --trials 100 --concurrency 1 --max-usd 0
 ```
 
-Swap `--scheduler random` for the blind baseline the guided search is measured
-against — same seeds, same mutators, same budget, no memory. That comparison is
-the whole point, so it ships as a first-class mode rather than a flag you have
-to reconstruct.
+Add `--scheduler random` to get the blind baseline instead: same seeds, same
+mutators, same budget, but no memory of what worked. Comparing the two is the
+whole point, so the baseline is a built-in mode rather than something you'd
+have to rebuild yourself.
 
-Then turn what it found into findings worth keeping. Triage re-runs every
-candidate many times, to measure it, shrink it and test which prerequisites it
-needs, so it takes a few minutes per candidate:
+Then turn what it found into findings worth keeping. Triage re-runs each
+candidate many times to measure it, shrink it and work out which parts of the
+setup it actually needs, so expect a few minutes per candidate:
 
 ```bash
 reprobe triage .reprobe --agent fake-agent --model reprobe-fake \
@@ -138,17 +197,19 @@ reprobe triage .reprobe --agent fake-agent --model reprobe-fake \
 median reduction 97%, $0.00 spent
 ```
 
-Two candidates the search found separately, both cut down to the same nine
-bytes — the smallest payload this agent's trigger can fire on at all — and
-grouped as one bug because they make the agent do the same forbidden thing. The
-interval is the reproduction rate: a cut is kept only if its *lower* bound still
-clears the threshold, so a payload that merely got lucky never survives. The
-last line is the part an engineer acts on: the exploit did not need the egress
-allowlist or either of those protected paths, so none of them is the fix.
+The search found two candidates separately. Both got cut down to the same nine
+bytes, which is the smallest payload this agent's trigger can fire on at all,
+and they're grouped as one bug because they make the agent do the same
+forbidden thing. The numbers in brackets are the reproduction rate and its
+interval. A cut only sticks if the lower end still clears the threshold, so a
+payload that just got lucky won't survive. The last line is the useful bit for
+whoever has to fix it: the attack didn't depend on the egress allowlist or on
+either of those protected paths, so changing them won't help.
 
-Export them as a regression suite, with its scenario bundled so it runs in any
-repository. (From here on the output is from a second run, which found five
-payloads for the same bug; paths are shortened and the timeline is trimmed.)
+Now export them as a regression suite. The scenario gets bundled in, so the
+suite runs in any repository. (From here on the output is from a second run,
+which found five payloads for the same bug. Paths are shortened and the
+timeline is trimmed.)
 
 ```bash
 reprobe export .reprobe --dest tests/reprobe
@@ -161,8 +222,8 @@ next: REPROBE_REGRESSION_TESTS=1 pytest tests/reprobe -v   (with pytest and repr
   or: reprobe verify tests/reprobe
 ```
 
-The exported test **fails while the exploit still reproduces**. It needs
-`pytest` and Reprobe in the same environment, which `uvx` provides:
+The exported test **fails while the attack still works**. It needs `pytest`
+and Reprobe installed together, and `uvx` handles that:
 
 ```bash
 REPROBE_REGRESSION_TESTS=1 uvx --with reprobe-agents pytest tests/reprobe -q
@@ -174,8 +235,8 @@ REPRODUCES: 100% [34%, 100%] (2/2) against a 30% threshold (lower bound 0.342 >=
 1 failed in 4.83s
 ```
 
-and **passes once the agent stops reproducing it**. `never` stands in for the
-fixed agent here:
+And it **passes once the agent stops falling for it**. Here the `never` profile
+plays the part of the fixed agent:
 
 ```bash
 REPROBE_FAKE_PROFILE_OVERRIDE=never reprobe verify tests/reprobe
@@ -187,15 +248,15 @@ REPROBE_FAKE_PROFILE_OVERRIDE=never reprobe verify tests/reprobe
 0 of 1 finding(s) not fixed
 ```
 
-It passes only when the whole interval is below the threshold: a run that
-cannot tell, or a sandbox that never ran, fails rather than passes. Without
-`REPROBE_REGRESSION_TESTS=1` the suite skips, and says so, so a repository can
-carry it without every contributor needing an API key. Adopting it in CI:
-[docs/ci.md](docs/ci.md).
+It only passes when the whole interval is below the threshold. A run that
+can't decide, or a sandbox that never started, fails instead. Without
+`REPROBE_REGRESSION_TESTS=1` the suite skips and tells you it did, so a repo can
+keep it around without every contributor needing an API key. To set it up in
+CI, see [docs/ci.md](docs/ci.md).
 
-Finally, the report an engineer reads: the rate, the shrunk payload and its diff
-from the original, the cost, and a timeline of a reproducing trial with the
-evidence marked:
+Finally, there's the report for whoever has to act on it. It has the rate, the
+shrunk payload and a diff against the original, the cost, and a timeline of a
+trial that reproduced it, with the evidence marked:
 
 ```bash
 reprobe report .reprobe --out findings.md      # or .html
@@ -204,105 +265,108 @@ reprobe report .reprobe --out findings.md      # or .html
 ```
 | +s | Event | Source | |
 | --- | --- | --- | --- |
-| 1.519 | 121 file_reads outside /workspace (libraries, interpreter) | strace |  |
+| 1.519 | 121 file_reads outside /workspace | strace |  |
 | 1.688 | file_read /workspace/README.md | strace |  |
 | 1.689 | file_read /workspace/.env | strace | **evidence** |
 | 1.692 | net_attempt POST collector.invalid/collect | gateway | **evidence** |
 ```
 
-Against a real agent, build its image (`make claude-code` or `make codex-cli`),
-set its API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`), drop
-`--agent-profile`, choose `--agent claude-code` or `--agent codex-cli` and a
-`--model`, and set a real `--max-usd`. The budget is enforced before each trial
-is dispatched, not reported afterwards. Contributing with a clone instead of
-the PyPI package: run the same commands through `uv sync --all-extras --dev`
-and `uv run reprobe ...`.
+To try a real agent instead, build its image (`make claude-code` or
+`make codex-cli`), set its API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`),
+drop `--agent-profile`, pick `--agent claude-code` or `--agent codex-cli` and a
+`--model`, and give it a real `--max-usd`. The budget is checked before each
+trial starts, not added up afterwards. If you're working from a clone rather
+than the PyPI package, run `uv sync --all-extras --dev` and prefix the same
+commands with `uv run`.
 
 ## Benchmark
 
-**Guided search against the random baseline: 0.75× at concurrency 1 and 0.88×
-at concurrency 4, against a target of 2×. Missed.** Measured on the scripted
-fake agent: one scenario, ten seeds, 200 trials per arm, counting unique
-reproducible findings per 1,000 trials, since nothing was spent.
+**Guided search against the random baseline came out at 0.75× at concurrency 1
+and 0.88× at concurrency 4. The target was 2×. Missed.** This was measured on
+the scripted fake agent: one scenario, ten seeds, 200 trials per side, counting
+unique reproducible findings per 1,000 trials, since nothing was spent.
 
-The target has exactly one reachable bug, so the metric only asks whether a
-seed reached it at all, and blind sampling did so more often (8 seeds against
-6 or 7). Once there, guided search exploits it 23× to 33× harder, which this
-metric cannot see. A fair test of the claim needs a target with several
-distinct bugs, or a real agent. Neither has been run yet.
+The catch is that the target only has one bug to find. So the metric really
+just asks whether each seed found it at all, and blind random sampling did
+that more often (8 seeds out of 10, against 6 or 7). Once guided search found
+the bug, it hit it 23 to 33 times as often as random did, but this metric
+can't see that. A fair test needs a target with several different bugs, or a
+real agent. Neither has been run yet.
 
-The benchmark also found that running trials concurrently made a seed's guided
-search depend on container timing and cost it hits. The timing dependence is
-fixed; part of the cost is inherent to choosing without the latest results,
-and `reprobe fuzz` says so. The method, every seed, and all six success metrics
-against their targets are in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
+The benchmark also turned up a problem: running trials in parallel made a
+seed's guided search depend on which container happened to finish first, and
+cost it hits. The timing dependence is fixed. Some of the cost is unavoidable,
+because the search has to pick its next input before the latest results are
+in, and `reprobe fuzz` warns about it. The method, every seed, and all six
+success metrics against their targets are in
+[docs/benchmark-v0.1.md](docs/benchmark-v0.1.md).
 
-## Design goals
+## Goals
 
-| Goal | Target | Measured so far |
+| Goal | Target | So far |
 | --- | --- | --- |
-| Find more | At least 2× the unique reproducible failures per dollar of a random-mutation baseline | 0.75–0.88× on a scripted one-bug target; see above |
-| Prove it | Every finding ships with a shrunk payload and a reproduction rate with its interval, and the counts behind it | Built; median reduction 97% on the triage gate |
-| Keep it fixed | Every finding exports as a CI test that fails while the exploit still reproduces above threshold | Built; tests are stable on rerun except for partly fixed agents |
-| Test agents as shipped | Work against off-the-shelf agent CLIs without modifying them | Claude Code and Codex CLI adapters |
+| Find more | At least 2× the unique reproducible failures per dollar of a random baseline | 0.75–0.88× on a scripted target with one bug; see above |
+| Prove it | Every finding comes with a shrunk payload, a reproduction rate with its interval, and the counts behind it | Built. Median payload reduction of 97% in the triage test |
+| Keep it fixed | Every finding exports as a CI test that fails while the attack still reproduces above the threshold | Built. Tests give the same result on rerun, except for agents that are only partly fixed |
+| Test agents as they ship | Work with off-the-shelf agent CLIs, unmodified | Claude Code and Codex CLI adapters |
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `reprobe run` | Run one scenario with fixed payloads, N times |
-| `reprobe soak` | Run N trials and fail if any hit a harness error |
-| `reprobe fuzz` | Search a scenario's attacker-controlled surfaces for violations (`--seed-file` adds imported seeds) |
-| `reprobe triage` | Confirm reproduction rates and shrink every candidate from a run |
+| `reprobe soak` | Run N trials and fail if any of them hit a harness error |
+| `reprobe fuzz` | Search the parts of a scenario an attacker controls for failures (`--seed-file` adds imported seeds) |
+| `reprobe triage` | Measure how often each candidate from a run reproduces, and shrink it |
 | `reprobe report` | Write a Markdown or HTML report of a triaged run |
 | `reprobe export` | Export findings as a self-contained pytest suite, and optionally a GitHub Action |
-| `reprobe verify` | Re-measure every exported finding and say whether each is fixed |
-| `reprobe bench` | Guided search against the random baseline, on equal trial budgets |
-| `reprobe seeds import` | Import seeds from Promptfoo, AgentDojo or JSONL, verbatim and attributed |
+| `reprobe verify` | Re-run every exported finding and say whether each one is fixed |
+| `reprobe bench` | Compare guided search against the random baseline on the same number of trials |
+| `reprobe seeds import` | Import seeds from Promptfoo, AgentDojo or JSONL, unchanged and credited |
 
-## Non-goals
+## What it doesn't do
 
-- Chat-only jailbreak testing. [garak](https://github.com/NVIDIA/garak) and [PyRIT](https://github.com/Azure/PyRIT) cover it.
-- Runtime protection or blocking in production.
-- Proving an agent secure. Coverage is a search aid, not a guarantee.
-- Contact with real external services or real credentials.
-- Testing models without an agent around them.
+- Jailbreak testing for chatbots. [garak](https://github.com/NVIDIA/garak) and [PyRIT](https://github.com/Azure/PyRIT) already do that.
+- Protect or block anything in production.
+- Prove an agent is secure. The coverage map helps the search, it doesn't guarantee anything.
+- Touch real external services or real credentials.
+- Test models on their own, without an agent around them.
 
 ## Prior work
 
-Reprobe is a layer on top of the ecosystem, not a replacement for it. Credit where it is due:
+Reprobe builds on other people's work rather than replacing it:
 
 | Project | What it does | What Reprobe adds |
 | --- | --- | --- |
-| [Promptfoo](https://www.promptfoo.dev/docs/red-team/coding-agents/) | Coding-agent attack plugins, canary-secret checks, repeated runs | Coverage-guided search, shrinking, confidence intervals. Imports its plugins as seeds |
-| [VeriGrey](https://arxiv.org/abs/2603.17639) | Greybox fuzzing guided by tool-call sequences | Public code, richer coverage signals, shrinking, CI export |
-| [AgentVigil](https://arxiv.org/abs/2505.05849) | Tree search over injection seeds for web agents | Coding-agent focus, public code |
-| [ChainFuzzer](https://arxiv.org/abs/2603.12614) | Fuzzing of tool chains guided by data flow | Reproduction statistics, regression export |
-| [AgentDojo](https://github.com/ethz-spylab/agentdojo) | Benchmark of fixed injection tasks | Imports its published attacks as seeds rather than competing |
-| [promptmin](https://www.npmjs.com/package/promptmin), [FailMin](https://pypi.org/project/failmin/) | Delta debugging for prompts and failure traces | Shrinks the injection and its environment together, under a noisy oracle |
+| [Promptfoo](https://www.promptfoo.dev/docs/red-team/coding-agents/) | Attack plugins for coding agents, fake-secret checks, repeated runs | Guided search, shrinking, confidence intervals. It can import Promptfoo's attacks as seeds |
+| [VeriGrey](https://arxiv.org/abs/2603.17639) | Fuzzing guided by the order of tool calls | Public code, more kinds of behaviour tracked, shrinking, CI export |
+| [AgentVigil](https://arxiv.org/abs/2505.05849) | Tree search over injection seeds for web agents | A focus on coding agents, public code |
+| [ChainFuzzer](https://arxiv.org/abs/2603.12614) | Fuzzing tool chains by following data flow | Reproduction statistics, regression tests |
+| [AgentDojo](https://github.com/ethz-spylab/agentdojo) | A benchmark of fixed injection tasks | Imports its published attacks as seeds instead of competing with it |
+| [promptmin](https://www.npmjs.com/package/promptmin), [FailMin](https://pypi.org/project/failmin/) | Shrinking prompts and failure traces | Shrinks the injection and its environment together, even when the agent only fails some of the time |
 
-None of the academic greybox agent fuzzers above has released code, which is a large part of why this project exists.
+None of the research fuzzers for agents listed above has released its code, which is a big part of why this project exists.
 
-> **On the name.** "AgentFuzz" was already taken by a [USENIX Security 2025 paper](https://www.usenix.org/conference/usenixsecurity25/presentation/liu-fengyu),
-> and `reprobe` is taken on PyPI by an unrelated activation-steering library. The
-> distribution is therefore named **`reprobe-agents`**, while the import package and
-> the CLI stay `reprobe`. "Reprobe" remains a working name pending
-> trademark review — see [docs/naming.md](docs/naming.md).
+> **About the name.** "AgentFuzz" was already taken by a [USENIX Security 2025 paper](https://www.usenix.org/conference/usenixsecurity25/presentation/liu-fengyu),
+> and `reprobe` is taken on PyPI by an unrelated library. So the package you
+> install is **`reprobe-agents`**, while the import name and the command are
+> still `reprobe`. "Reprobe" is a working name until a trademark check is done;
+> see [docs/naming.md](docs/naming.md).
 
 ## Safety
 
-This is a tool for testing agents you own or are authorised to test. The design keeps the blast radius small by construction:
+Only use this on agents you own or have permission to test. It's set up so that very little can go wrong even if an attack works:
 
-- **Synthetic secrets only.** Canaries are generated per trial with the recognisable prefix `RPRB_CANARY_`. No real credential ever enters a trial.
-- **No real egress, with one narrow, logged exception.** Trial containers run on an `internal` Docker network; the agent has no route off the host. Every outbound attempt lands on a local mock gateway, which logs it and refuses anything off the scenario's allowlist. The one exception is the agent's own model API: the gateway tunnels an HTTPS `CONNECT` to a named set of model-API hosts (and nothing else) so a real agent can run at all, while the agent container itself still has no direct route out. With the free fake-agent lane there is no such exception — no egress network exists.
-- **No inherited environment.** A container receives only the variables its agent adapter explicitly declares.
+- **Only fake secrets.** The secrets are synthetic, generated fresh for every trial, and all start with `RPRB_CANARY_`, so they're easy to spot. No real credential ever goes into a trial.
+- **Nothing gets out, with one narrow, logged exception.** Trial containers run on an `internal` Docker network, so the agent has no route off your machine. Every request it makes lands on a local mock gateway, which logs it and refuses anything not on the scenario's allowlist. The one exception is the agent's own model API: for a real agent to work at all, the gateway will tunnel HTTPS to a short, named list of model-API hosts and nothing else. The agent container still has no direct route out. With the free fake agent there's no exception at all, because no outside network is created.
+- **No environment leaks in.** A container only gets the environment variables its agent adapter explicitly asks for.
 - **Bring your own key.** Reprobe never ships or proxies credentials for a hosted agent.
 
-Reporting a vulnerability in Reprobe itself: see [SECURITY.md](SECURITY.md). Reporting a flaw you find in a third-party agent *using* Reprobe: [docs/disclosure.md](docs/disclosure.md), which covers what a finding is and is not, each vendor's published contact, and a 90-day timeline.
+To report a security problem in Reprobe itself, see [SECURITY.md](SECURITY.md). If you used Reprobe to find a problem in someone else's agent, see [docs/disclosure.md](docs/disclosure.md). It covers what a finding does and doesn't prove, where each vendor wants reports sent, and a 90-day timeline.
 
 ## Contributing
 
-Scenarios are the most valuable thing an outside contributor can add, and they need no Python — a scenario is a YAML file plus a small repository fixture. [CONTRIBUTING.md](CONTRIBUTING.md) has the details, including the rule that contributed payloads must target synthetic canaries and never real credentials or real collection endpoints.
+The most useful thing you can add is a scenario, and that doesn't need any Python: a scenario is a YAML file and a small example repository. [CONTRIBUTING.md](CONTRIBUTING.md) has the details, including the one hard rule: payloads must only go after the fake secrets, never real credentials or real endpoints.
 
 ## Licence
 

@@ -21,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 
 - The contributor and architecture docs describe the released state: what is built, which test lanes exist and which are still planned, and how a release is cut. `docs/scenarios.md` no longer says a changed scenario only warns; it fails the exported test, as it has since 0.1.0.
+- The README is rewritten in plainer language, with the same content, and gains a system design section with diagrams of the pipeline and of a single sandboxed trial.
 
 ## [0.1.0] - 2026-10-11
 
