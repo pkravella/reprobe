@@ -56,10 +56,10 @@ jobs:
 
       - name: Unit tests
         # --cov-fail-under guards against silent coverage rot: the suite sits
-        # at 99% (only cli.py's NotImplementedError stubs are uncovered), and a
+        # at 100% (docker_sandbox.py is omitted; see pyproject.toml), and a
         # whole module losing its tests would blow past this floor. The number
         # is deliberately below the real figure so a single hard-to-cover line
-        # does not turn into a red build.
+        # does not turn into a red build; keep the real figure at 100 by review.
         run: >
           uv run pytest tests/unit -v
           --cov=reprobe --cov-report=term-missing --cov-fail-under=95

@@ -2,6 +2,12 @@
 
 Reprobe is a security *testing* tool. That makes two different kinds of report possible, and they go to different places.
 
+## Supported versions
+
+| Version | Supported |
+| --- | --- |
+| 0.1.x | Yes |
+
 ## 1. A vulnerability in Reprobe itself
 
 Report it privately through GitHub's [private vulnerability reporting](https://github.com/pkravella/reprobe/security/advisories/new). Please do not open a public issue for these.

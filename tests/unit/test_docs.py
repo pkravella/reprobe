@@ -194,14 +194,17 @@ def test_ci_guide_covers_what_an_adopter_needs():
 
 
 def test_shipped_commands_in_docs_parse():
-    """Every `uv run reprobe ...` line in the README must name real options."""
+    """Every `reprobe ...` command line in the README must name real options."""
     from typer.main import get_command
 
     from reprobe.cli import app
 
     group = get_command(app)
     text = _read("README.md")
-    for match in re.finditer(r"uv run reprobe ([a-z]+)((?: \\\n|[^\n])*)", text):
+    pattern = r"^(?:[A-Z_]+=\S+ )*(?:uv run )?reprobe ([a-z]+)((?: \\\n|[^\n])*)"
+    matches = list(re.finditer(pattern, text, flags=re.M))
+    assert len(matches) >= 6, f"only {len(matches)} command lines found; the check would be vacuous"
+    for match in matches:
         name, rest = match.group(1), match.group(2)
         command = group.commands[name]  # type: ignore[attr-defined]
         if name == "seeds":

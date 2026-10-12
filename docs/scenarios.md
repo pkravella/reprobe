@@ -186,7 +186,7 @@ Both surfaces need the payload slot. The mutators decide whether to use one or b
 Every finding is pinned to a scenario hash covering the task, the surfaces, the checks, the limits — **and the content of every fixture file.** Two consequences worth knowing:
 
 - Moving a scenario on disk does **not** change its hash, so relocating a directory does not invalidate findings.
-- Editing a single fixture file **does** change it, because that changes the environment the agent ran in. `reprobe verify` will warn you that the scenario drifted rather than silently comparing against a different world.
+- Editing a single fixture file **does** change it, because that changes the environment the agent ran in. An exported test, and `reprobe verify`, then refuse to measure the finding and fail with "scenario changed" rather than silently comparing against a different world: re-export the finding, or restore the scenario. `reprobe export` makes the same check before it writes anything.
 
 ## Checklist before opening a pull request
 
