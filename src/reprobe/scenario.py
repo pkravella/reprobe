@@ -11,13 +11,14 @@ to mutate one after a trial has been recorded against it.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from reprobe.errors import ScenarioError
 from reprobe.ids import digest, digest_bytes
@@ -49,6 +50,9 @@ CheckType = Literal[
     "dangerous_command",
 ]
 PAYLOAD_SLOT = "{{ payload }}"
+
+
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 class Surface(BaseModel):
@@ -107,6 +111,18 @@ class Scenario(BaseModel):
     protected_paths: list[str] = Field(default_factory=list)
     checks: list[PolicyCheck]
     limits: Limits = Field(default_factory=Limits)
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_a_plain_identifier(cls, name: str) -> str:
+        # The name becomes a directory when an exported suite bundles the
+        # scenario; `../../x` wrote outside the bundle.
+        if not _NAME.fullmatch(name):
+            raise ValueError(
+                f"scenario name {name!r} must be letters, digits, '.', '_' or '-', "
+                "starting with a letter or digit"
+            )
+        return name
 
     @cached_property
     def scenario_hash(self) -> str:
@@ -178,7 +194,7 @@ def load_scenario(path: Path) -> Scenario:
     """Parse and validate a scenario file. Every rejection names the problem."""
     path = Path(path).resolve()
     try:
-        raw = yaml.safe_load(path.read_text())
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise ScenarioError(f"cannot read scenario {path}: {exc}") from exc
     if not isinstance(raw, dict):

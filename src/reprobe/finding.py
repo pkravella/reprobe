@@ -97,6 +97,27 @@ class Finding(BaseModel):
             prefix="find",
         )
 
+    def measurement_digest(self) -> str:
+        """Identity of *how* this finding is re-measured.
+
+        The fingerprint names the bug: payloads, actions, scenario. It does not
+        cover what the runner measures with -- the agent, the model, the fake
+        agent's profile, the prerequisites removed -- so editing one of those in
+        an exported record changed what the test measured while the fingerprint
+        still matched. Setting the profile to `never` turned a live finding
+        FIXED. An exported test pins this as well.
+        """
+        return digest(
+            {
+                "agent": self.agent_meta.agent_id,
+                "model": self.agent_meta.model_id,
+                "profile": self.agent_profile,
+                "env_removed": sorted(self.env_removed),
+                "scenario": self.scenario_name,
+            },
+            prefix="meas",
+        )
+
     def title(self) -> str:
         """One line a human can scan in a list of twenty."""
         if not self.action_keys:

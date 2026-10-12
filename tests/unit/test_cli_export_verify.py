@@ -358,3 +358,55 @@ def test_export_reports_a_workflow_refusal_without_a_traceback(tmp_path, monkeyp
     assert result.exit_code == 2
     assert "ref" in result.output
     assert isinstance(result.exception, SystemExit)
+
+
+def test_verify_keeps_going_past_a_finding_for_an_agent_it_does_not_know(tmp_path, docker):
+    """A raw KeyError used to abort the run with no summary, reproduced."""
+    import json as _json
+
+    _exported(tmp_path, _finding(actions=["a"]), _finding(actions=["b"]))
+    record = next((tmp_path / "suite" / "reprobe_findings").glob("*.json"))
+    data = _json.loads(record.read_text())
+    data["agent_meta"]["agent_id"] = "nope"
+    record.write_text(_json.dumps(data))
+    result = _verify(tmp_path)
+    assert result.exit_code == 1, result.output
+    assert result.output.count("ERROR") == 1
+    assert "of 2 finding(s) not fixed" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_verify_refuses_an_unknown_profile_override_before_any_trial(tmp_path, docker):
+    _exported(tmp_path, _finding(agent_id="fake-agent", agent_profile="always"))
+    calls = {"n": 0}
+
+    def behaviour(spec):
+        calls["n"] += 1
+        return clean_result()
+
+    docker["behaviour"] = behaviour
+    result = _verify(tmp_path, "--fake-profile-override", "nevr")
+    assert result.exit_code == 2
+    assert "nevr" in result.output
+    assert calls["n"] == 0
+
+
+def test_verify_on_a_mangled_suite_is_a_usage_error(tmp_path, docker):
+    _exported(tmp_path)
+    test_file = next((tmp_path / "suite").glob("test_*.py"))
+    test_file.write_text(test_file.read_text().replace("FINGERPRINT = ", "NOT_IT = "))
+    result = _verify(tmp_path)
+    assert result.exit_code == 2
+    assert test_file.name in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_verify_and_the_exported_suite_share_a_default_budget():
+    """`reprobe verify` defaulted to $10 while the suite's conftest used $5."""
+    from typer.main import get_command
+
+    verify = get_command(cli.app).commands["verify"]  # type: ignore[attr-defined]
+    default = next(p.default for p in verify.params if p.name == "max_usd")
+    from reprobe.export.pytest_export import render_conftest
+
+    assert f'"REPROBE_MAX_USD", "{default:g}"' in render_conftest([_finding()])

@@ -115,3 +115,26 @@ def test_a_record_written_before_candidate_id_existed_still_loads():
     record = make_finding().to_record()
     del record["candidate_id"]
     assert Finding.from_record(record).candidate_id is None
+
+
+def test_the_measurement_digest_covers_what_the_runner_measures_with():
+    base = make_finding(agent_id="fake-agent", agent_profile="always")
+    for change in (
+        {"agent_profile": "never"},
+        {"agent_id": "claude-code"},
+        {"model_id": "other"},
+        {"env_removed": ["egress_allowlist"]},
+    ):
+        assert (
+            make_finding(
+                **{"agent_id": "fake-agent", "agent_profile": "always", **change}
+            ).measurement_digest()
+            != base.measurement_digest()
+        ), change
+    # And not what does not change the measurement.
+    assert (
+        make_finding(
+            agent_id="fake-agent", agent_profile="always", cost_usd=9.0
+        ).measurement_digest()
+        == base.measurement_digest()
+    )

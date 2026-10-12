@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from reprobe.dedupe import FindingGroup, dedupe
+from reprobe.errors import ConfigError
 from reprobe.export.pytest_export import _env
 from reprobe.finding import Finding
 from reprobe.stats import estimate
@@ -46,8 +47,10 @@ from reprobe.trace import Event, Trace
 from reprobe.triage import DroppedCandidate
 
 MAX_TIMELINE_ROWS = 150
-#: The sandbox's working directory; reads outside it are the interpreter
-#: and its libraries loading, which a run of collapses into one row.
+#: The sandbox's working directory. Reads outside it are mostly the interpreter
+#: and its libraries loading, so a run of them collapses into one row; the row
+#: does not claim to know which, because a run of probes for ~/.ssh would
+#: collapse the same way.
 _WORKSPACE = "/workspace"
 _COLLAPSE_AT = 3
 _DESCRIPTION_CHARS = 160
@@ -79,11 +82,12 @@ def _visible(ch: str) -> str:
 
 
 #: Every character that can open inline syntax: code, emphasis, strikethrough,
-#: links and images, raw HTML, entities, table cells, and (with the line kept
-#: whole) headings. Escaping more -- `.` and `:` -- would make versions and
+#: links and images, raw HTML, entities, table cells, (with the line kept
+#: whole) headings, @-mentions that would notify people where the report is
+#: pasted, and `$` maths. Escaping more -- `.` and `:` -- would make versions and
 #: hashes unreadable in the raw file for no gain. A bare `https://` or `www.`
 #: can still autolink on GitHub; that is clickable, never fetched.
-_MD_SPECIAL = frozenset("\\`*_[]()<>|#~&!")
+_MD_SPECIAL = frozenset("\\`*_[]()<>|#~&!@$")
 
 
 def md_inline(value: object) -> str:
@@ -131,8 +135,14 @@ def _matches(event: Event, violation: Mapping[str, Any]) -> bool:
             and event.ts == seen.get("ts")
         )
     if check in ("canary_exfil", "egress_offlist"):
-        return event.kind == "net_attempt" and all(
-            attrs.get(k) == seen.get(k) for k in ("host", "port", "method")
+        # Host, port and method alone matched every request to the host; the
+        # violation also records the path and, for exfiltration, the time.
+        return (
+            event.kind == "net_attempt"
+            and str(attrs.get("host", "")).lower() == str(seen.get("host", "")).lower()
+            and all(attrs.get(k) == seen.get(k) for k in ("port", "method"))
+            and all(attrs.get(k) == seen[k] for k in ("path",) if k in seen)
+            and ("ts" not in seen or event.ts == seen["ts"])
         )
     if check == "protected_write":
         return event.kind == "file_write" and attrs.get("path") == seen.get("path")
@@ -166,9 +176,7 @@ def timeline(
                     offset=noise[0].offset,
                     kind="file_read",
                     source=noise[0].source,
-                    description=(
-                        f"{len(noise)} file_reads outside {_WORKSPACE} (libraries, interpreter)"
-                    ),
+                    description=(f"{len(noise)} file_reads outside {_WORKSPACE}"),
                     evidence=False,
                 )
             )
@@ -280,7 +288,14 @@ def _detail(
             or (finding.action_keys and not keys & set(finding.action_keys))
         ):
             continue
-        trace = Trace.from_jsonl(store.get_blob(record["trace_ref"]).decode("utf-8"), trial_id)
+        try:
+            blob = store.get_blob(record["trace_ref"])
+        except (OSError, KeyError) as exc:
+            raise ConfigError(
+                f"the trace for trial {trial_id} is missing from the store "
+                f"({record.get('trace_ref')}); the report needs it for the timeline"
+            ) from exc
+        trace = Trace.from_jsonl(blob.decode("utf-8"), trial_id)
         rows, omitted = cap_rows(timeline(trace, verdict["violations"], finding.action_keys))
         return FindingDetail(finding, group.size, diff, trial_id, rows, omitted)
     return FindingDetail(finding, group.size, diff, None, [], 0)

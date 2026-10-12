@@ -171,3 +171,16 @@ def test_an_unreachable_threshold_is_refused_as_a_sentence(tmp_path, monkeypatch
     assert "no payload could clear" in result.output
     assert "Traceback" not in result.output
     assert sandbox.calls == []
+
+
+def test_triage_on_an_empty_store_or_unknown_run_says_so(tmp_path, monkeypatch):
+    """It printed a raw FileNotFoundError traceback, reproduced; `export`
+    had the same bug and was fixed in 0.1.0."""
+    result = _invoke(tmp_path / "empty", monkeypatch, _sandbox(), "--agent", "fake-agent")
+    assert result.exit_code == 2
+    assert "no runs" in result.output
+    assert isinstance(result.exception, SystemExit)
+    _run_with_a_candidate(tmp_path)
+    result = _invoke(tmp_path, monkeypatch, _sandbox(), "--run", "run_nope")
+    assert result.exit_code == 2
+    assert "run_nope" in result.output

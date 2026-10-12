@@ -384,7 +384,7 @@ def triage(
         raise typer.BadParameter(f"unknown profile {agent_profile!r}; known: {known_profiles()}")
 
     store = RunStore(out)
-    run_id = run or store.latest_run()
+    run_id = _resolve_run(store, run, out)
     meta = store.meta(run_id)
     recorded = meta.get("scenario_path")
     if scenario_path is None and not recorded:
@@ -481,7 +481,11 @@ def report(
 
     store = RunStore(out)
     run_id = _resolve_run(store, run, out)
-    written = write_report(build_report(store, run_id), dest)
+    try:
+        written = write_report(build_report(store, run_id), dest)
+    except (ReprobeError, OSError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
     typer.echo(f"report   {written}")
 
 
@@ -585,7 +589,8 @@ def export(
 def verify(
     suite_dir: Annotated[Path, typer.Argument(help="Exported suite directory")],
     max_trials: Annotated[int | None, typer.Option(help="Override every test's trial cap")] = None,
-    max_usd: Annotated[float, typer.Option(help="Dollar cap across the whole suite")] = 10.0,
+    # The same default as the exported suite's conftest (REPROBE_MAX_USD).
+    max_usd: Annotated[float, typer.Option(help="Dollar cap across the whole suite")] = 5.0,
     scenarios: Annotated[
         Path | None, typer.Option(help="Scenarios directory (default: the suite's bundled copies)")
     ] = None,
@@ -604,34 +609,36 @@ def verify(
     from reprobe.export.pytest_export import FINDINGS_DIR, SCENARIOS_DIR, suite_entries
     from reprobe.verify import FindingRunner, check_decidable
 
-    entries = suite_entries(suite_dir)
+    try:
+        entries = suite_entries(suite_dir)
+        if max_trials is not None:
+            for entry in entries:
+                check_decidable(threshold=entry.threshold, max_trials=max_trials)
+        runner = FindingRunner(
+            scenarios or suite_dir / FINDINGS_DIR / SCENARIOS_DIR,
+            max_usd=max_usd,
+            store_root=store_root,
+            profile_override=fake_profile_override,
+        )
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
     if not entries:
         typer.echo(f"no exported findings under {suite_dir}", err=True)
         raise typer.Exit(2)
-    if max_trials is not None:
-        try:
-            for entry in entries:
-                check_decidable(threshold=entry.threshold, max_trials=max_trials)
-        except ConfigError as exc:
-            typer.echo(f"error: {exc}", err=True)
-            raise typer.Exit(2) from exc
-
-    runner = FindingRunner(
-        scenarios or suite_dir / FINDINGS_DIR / SCENARIOS_DIR,
-        max_usd=max_usd,
-        store_root=store_root,
-        profile_override=fake_profile_override,
-    )
     not_fixed = 0
     for entry in entries:
         try:
             outcome = runner.check(
                 entry.finding_file,
                 fingerprint=entry.fingerprint,
+                measurement=entry.measurement,
                 threshold=entry.threshold,
                 max_trials=max_trials or entry.max_trials,
             )
-        except (ReprobeError, FileNotFoundError) as exc:
+        except (ReprobeError, OSError) as exc:
+            # One finding that cannot be measured is a failure for that finding,
+            # not a crash that hides the verdict on every other one.
             not_fixed += 1
             typer.echo(f"  ERROR       {entry.test_file.name}: {exc}")
             continue
