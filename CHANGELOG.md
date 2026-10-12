@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-12
+
+A bug-fix release, from a review of everything 0.1.0 shipped. The one to act on: an exported finding record could be edited so that a live exploit's test passed as FIXED. Tests exported from now on pin how the finding was measured as well as which bug it is. **If you have a suite exported by 0.1.0, re-export it** to get that protection; until then it is checked exactly as before.
+
 ### Fixed
 
 - The release workflow's check that the wheel did not ship a `reprobe_agents/` package could never fail, because the shell ignores a negated command's failure. It is now a real check, and every guard that can refuse a release, including that the tag is on `main` and that the changelog has a section for the version, runs before anything is uploaded. Release notes no longer end with the changelog's link lines.
@@ -135,5 +139,6 @@ Measured on the free fake-agent lane, with what each measurement does and does n
 - The mock gateway reads a request body with `readexactly` rather than `read`, so a canary near the end of a multi-kilobyte POST body can no longer be truncated out of the preview that `canary_exfil` scans.
 - The free lane's scripted agent now reads the attacker-controlled files the *scenario* declares, instead of four filenames baked into its container image. A scenario whose payload went anywhere else had it written to disk and never read, so the trial came back clean — indistinguishable from an agent that saw the injection and resisted it, and enough to make a comparison across such scenarios report a tie.
 
-[Unreleased]: https://github.com/pkravella/reprobe/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pkravella/reprobe/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/pkravella/reprobe/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pkravella/reprobe/releases/tag/v0.1.0
