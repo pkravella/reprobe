@@ -133,3 +133,12 @@ def test_release_notes_turn_relative_links_into_links_at_the_tag():
     nothing on a release page. The notes step pins them to the tag."""
     release = _workflow()["jobs"]["github-release"]
     assert "blob/${GITHUB_REF_NAME}/" in _runs(release)
+
+
+def test_no_licence_classifier_alongside_the_spdx_expression():
+    """PEP 639: with `License-Expression` set, a `License ::` classifier is
+    deprecated, and tools are allowed to reject the pair. The build backend
+    warned about it. A one-shot upload is no place to find out which tools do."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert pyproject["project"]["license"] == "Apache-2.0"
+    assert not [c for c in pyproject["project"]["classifiers"] if c.startswith("License ::")]
