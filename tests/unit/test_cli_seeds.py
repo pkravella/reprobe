@@ -56,3 +56,29 @@ def test_seeds_import_will_not_overwrite_without_force(tmp_path):
     assert again.exit_code == 2
     assert "--force" in again.output
     assert _import(*args, "--force").exit_code == 0
+
+
+def test_the_force_hint_only_follows_the_refusal_to_overwrite(tmp_path):
+    """It was appended to any error once the file existed, so a malformed
+    input was answered with "pass --force"."""
+    dest = tmp_path / "s.yaml"
+    dest.write_text("[]\n")
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("just a string")
+    result = _import(str(bad), "--format", "promptfoo", "--out", str(dest))
+    assert result.exit_code == 2
+    assert "--force" not in result.output
+
+
+def test_an_unwritable_destination_is_a_clean_error(tmp_path):
+    (tmp_path / "dir").mkdir()
+    result = _import(
+        "tests/data/agentdojo-sample",
+        "--format",
+        "agentdojo",
+        "--out",
+        str(tmp_path / "dir"),
+        "--force",
+    )
+    assert result.exit_code == 2
+    assert isinstance(result.exception, SystemExit)

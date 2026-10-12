@@ -21,9 +21,9 @@ Honesty rules, each with a test:
 * **A ratio with nothing under it is not reported.** If the baseline found
   nothing, the ratio is n/a, and the strict "found what the baseline missed"
   count says what happened instead.
-* **Time to first violation is counted in trials and censored.** A seed that
-  never violates is "> budget", not a number; once most are, the median is a
-  bound. Wall-clock time is constant per trial on the scripted agent and
+* **Time to first violation is counted in trials, in dispatch order, and
+  censored.** A seed that never violates is "> budget", not a number; once
+  most are, the median is a bound. Wall-clock time is constant per trial on the scripted agent and
   confounded by concurrency, so it would only restate the trial count.
 * **The runtime and the agent are printed**, so a simulated run can never be
   read as a claim about a real agent.
@@ -86,6 +86,8 @@ class ArmResult:
     #: 1-based position of the first violating trial; None if none violated.
     trials_to_first_violation: int | None
     runtime: str
+    #: Groups the dollar cap stopped from being confirmed: not counted either way.
+    unconfirmed: int = 0
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,8 @@ class BenchReport:
     arms: list[ArmResult] = field(default_factory=list)
     runtime: str = "unknown"
     budget_exhausted: bool = False
+    #: (scenario file, seed, scheduler) of every arm the cap stopped from running.
+    skipped: list[tuple[str, int, str]] = field(default_factory=list)
 
 
 def _check(config: BenchConfig) -> None:
@@ -108,13 +112,6 @@ def _check(config: BenchConfig) -> None:
     ]
     if empty or config.trials_per_arm < 1:
         raise ConfigError(f"nothing to benchmark: {', '.join(empty) or 'trials_per_arm'} is empty")
-
-
-def _first_violation(store: RunStore, run_id: str) -> int | None:
-    for position, record in enumerate(store.read(run_id, "trials"), 1):
-        if (record.get("verdict") or {}).get("violated"):
-            return position
-    return None
 
 
 def _arm(
@@ -147,22 +144,26 @@ def _arm(
         sandbox=sandbox,
         store=store,
     )
-    first = _first_violation(store, result.run_id)
-
     groups: dict[tuple[str, ...], Candidate] = {}
     for found in result.violations:
         groups.setdefault(tuple(sorted(found.action_keys)), found.candidate)
 
+    # With a cap, confirmation gets what the search left. Never a ledger of 0
+    # when the cap is spent: 0 means "free only" and lets the first paid trial
+    # through, so a $5 cap spent $6. A spent cap skips confirmation instead,
+    # and the groups are reported as unconfirmed, not as not reproducible.
+    remaining = budget_left - result.cost_usd if budget_left > 0 else 0.0
+    exhausted = budget_left > 0 and remaining <= 0
     ledger = BudgetLedger(
-        BudgetCaps(
-            max_usd=max(0.0, budget_left - result.cost_usd) if budget_left > 0 else 0.0,
-            max_trials=1_000_000,
-            max_concurrency=1,
-        )
+        BudgetCaps(max_usd=max(remaining, 0.0), max_trials=1_000_000, max_concurrency=1)
     )
     rng = random.Random(seed)
     confirmed: list[str] = []
+    unconfirmed = 0
     for keys, candidate in groups.items():
+        if exhausted or (budget_left == 0 and result.cost_usd > 0):
+            unconfirmed += 1
+            continue
         confirmation = Confirmer(
             scenario,
             agent_id=config.agent_id,
@@ -181,6 +182,8 @@ def _arm(
         ).confirm(candidate, seed=rng.randrange(2**31))
         if confirmation.estimate.lo >= config.threshold:
             confirmed.append(",".join(keys))
+        elif confirmation.stop_reason.startswith("budget"):
+            unconfirmed += 1
 
     return ArmResult(
         scheduler=scheduler,
@@ -193,7 +196,8 @@ def _arm(
         unique_findings=len(confirmed),
         finding_keys=sorted(confirmed),
         cost_usd=result.cost_usd + ledger.spent_usd,
-        trials_to_first_violation=first,
+        trials_to_first_violation=result.first_violation,
+        unconfirmed=unconfirmed,
         runtime=str(sandbox.describe().get("runtime", "unknown")),
     )
 
@@ -207,13 +211,19 @@ def benchmark(
     _check(config)
     store = RunStore(Path(store_root))
     arms: list[ArmResult] = []
+    skipped: list[tuple[str, int, str]] = []
     spent = 0.0
     exhausted = False
     for scenario_path in config.scenarios:
         for seed in config.seeds:
             for scheduler in config.schedulers:
-                if config.max_usd > 0 and spent >= config.max_usd:
+                # A cap of 0 means it must cost nothing: one arm that spent
+                # anything stops the rest, rather than each spending a little.
+                if (config.max_usd > 0 and spent >= config.max_usd) or (
+                    config.max_usd == 0 and spent > 0
+                ):
                     exhausted = True
+                    skipped.append((Path(scenario_path).parent.name, seed, scheduler))
                     continue
                 left = config.max_usd - spent if config.max_usd > 0 else 0.0
                 arm = _arm(
@@ -232,7 +242,12 @@ def benchmark(
         config=config,
         arms=arms,
         runtime=", ".join(sorted(runtimes)) or "unknown",
-        budget_exhausted=exhausted or (config.max_usd > 0 and spent >= config.max_usd),
+        budget_exhausted=(
+            exhausted
+            or (config.max_usd > 0 and spent >= config.max_usd)
+            or (config.max_usd == 0 and spent > 0)
+        ),
+        skipped=skipped,
     )
 
 
@@ -278,7 +293,14 @@ def censored_median(values: Sequence[int | None], *, budget: int) -> str:
 
 def _missed_by_baseline(arms: Sequence[ArmResult]) -> tuple[int, int]:
     """(scenario, seed) pairs where guided confirmed a group random did not."""
-    pairs = {(a.scenario, a.seed) for a in arms}
+    # Only where both arms ran: a baseline the cap stopped is not a baseline
+    # that found nothing.
+    ran = {(a.scenario, a.seed, a.scheduler) for a in arms}
+    pairs = {
+        (scenario, seed)
+        for scenario, seed, _ in ran
+        if (scenario, seed, "energy") in ran and (scenario, seed, "random") in ran
+    }
     wins = 0
     for scenario, seed in pairs:
         guided = {
@@ -351,7 +373,26 @@ def render_bench_markdown(report: BenchReport) -> str:
         )
     lines.append(f"- cost: ${sum(a.cost_usd for a in arms):.2f}")
     if report.budget_exhausted:
-        lines.append("- **the dollar cap was reached; some arms ran short or not at all**")
+        if cfg.max_usd == 0:
+            lines.append(
+                "- **--max-usd 0 means it must cost nothing, and a trial cost money; the "
+                "remaining arms did not run**"
+            )
+        else:
+            lines.append("- **the dollar cap was reached; some arms ran short or not at all**")
+    if report.skipped:
+        lines.append(
+            "- did not run: "
+            + ", ".join(
+                f"{scheduler} seed {seed} ({scn})" for scn, seed, scheduler in report.skipped
+            )
+        )
+    unconfirmed = sum(a.unconfirmed for a in arms)
+    if unconfirmed:
+        lines.append(
+            f"- {unconfirmed} group(s) could not be confirmed before the dollar cap; they are "
+            "counted neither as reproducible nor as not"
+        )
     lines += [
         "",
         "A unique reproducible finding is a group of candidates with the same violating "
