@@ -65,8 +65,8 @@ def load_seeds(paths: Sequence[Path] | None = None) -> list[Seed]:
 
 def _read_seed_file(path: Path) -> list[Seed]:
     try:
-        raw = yaml.safe_load(path.read_text())
-    except (OSError, yaml.YAMLError) as exc:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise SeedError(f"cannot read seed file {path}: {exc}") from exc
     if raw is None:
         return []

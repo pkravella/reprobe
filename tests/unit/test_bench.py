@@ -297,3 +297,81 @@ def test_markdown_states_the_concurrency(report):
     found 0 violations at concurrency 4 and 58 at concurrency 1. A result
     without the setting is not comparable to anything."""
     assert "concurrency 1" in render_bench_markdown(report)
+
+
+def _paying(usd=1.0):
+    def factory():
+        def behaviour(spec):
+            head = "\n".join(spec.payloads.values())[:300]
+            if TRIGGER in head:
+                return leaky_result(canary=spec.canaries[0].value, usd=usd)
+            return clean_result(usd=usd)
+
+        return FakeSandbox(behaviour)
+
+    return factory
+
+
+def test_confirmation_never_spends_past_the_cap(tmp_path):
+    """Reproduced: a $5 cap spent $6. The fuzz arm used the last dollar, and the
+    confirmation ledger got max_usd=0 -- which means "free only" and lets the
+    first paid trial through -- then called the bug "not reproducible" off
+    that one trial."""
+    report = benchmark(
+        _config(seeds=[1], schedulers=("energy",), trials_per_arm=5, max_usd=5.0),
+        sandbox_factory=_paying(),
+        store_root=tmp_path,
+    )
+    (arm,) = report.arms
+    assert arm.cost_usd <= 5.0
+    assert arm.groups >= 1
+    assert arm.unconfirmed == arm.groups and arm.unique_findings == 0
+    assert "could not be confirmed" in render_bench_markdown(report)
+
+
+def test_a_free_benchmark_stops_at_the_first_spend(tmp_path):
+    """--max-usd 0 means it must cost nothing; reproduced spending $6 over
+    four arms."""
+    report = benchmark(
+        _config(seeds=[1, 2], trials_per_arm=5, max_usd=0.0),
+        sandbox_factory=_paying(),
+        store_root=tmp_path,
+    )
+    assert len(report.arms) == 1
+    assert report.budget_exhausted
+    assert "must cost nothing" in render_bench_markdown(report)
+
+
+def test_a_seed_whose_baseline_did_not_run_is_not_a_guided_win():
+    from reprobe.bench import _missed_by_baseline
+
+    arms = [_arm("energy", 1, 1), _arm("energy", 2, 1), _arm("random", 2, 0)]
+    assert _missed_by_baseline(arms) == (1, 1)
+
+
+def test_the_report_lists_every_arm_the_cap_stopped(tmp_path):
+    report = benchmark(
+        _config(seeds=[1, 2], trials_per_arm=5, max_usd=6.0),
+        sandbox_factory=_paying(),
+        store_root=tmp_path,
+    )
+    text = render_bench_markdown(report)
+    assert "did not run:" in text
+    ran = {(a.scheduler, a.seed) for a in report.arms}
+    for scheduler, seed in {("energy", 1), ("random", 1), ("energy", 2), ("random", 2)} - ran:
+        assert f"{scheduler} seed {seed}" in text
+
+
+def test_the_benchmark_takes_the_first_violation_from_the_search(tmp_path, monkeypatch):
+    import reprobe.bench as bench
+
+    real = bench.fuzz
+
+    def tagged(*args, **kwargs):
+        return real(*args, **kwargs).model_copy(update={"first_violation": 17})
+
+    monkeypatch.setattr(bench, "fuzz", tagged)
+    report = benchmark(
+        _config(seeds=[1], schedulers=("energy",)), sandbox_factory=_gradient(), store_root=tmp_path
+    )
+    assert report.arms[0].trials_to_first_violation == 17

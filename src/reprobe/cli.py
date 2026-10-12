@@ -8,6 +8,7 @@ tests. Each one is implemented by a later task.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated, NamedTuple
 
@@ -683,6 +684,11 @@ def bench(
         # The draft's command wrote over docs/benchmark-v0.1.md, the gate record.
         typer.echo(f"error: {out} exists; pass --force to replace it", err=True)
         raise typer.Exit(2)
+    # Checked before spending anything: the report is written only at the end.
+    parent = out.parent if out.parent.exists() else Path.cwd()
+    if out.is_dir() or not os.access(parent, os.W_OK):
+        typer.echo(f"error: cannot write the report to {out}", err=True)
+        raise typer.Exit(2)
     try:
         adapter = get_adapter(agent)
         report = benchmark(
@@ -737,9 +743,14 @@ def seeds_import(
         raise typer.Exit(2)
     try:
         seeds = importer(path)
-        written = write_seed_file(seeds, dest, force=force)
     except ReprobeError as exc:
-        hint = " (pass --force to replace it)" if dest.exists() and not force else ""
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    try:
+        written = write_seed_file(seeds, dest, force=force)
+    except (ReprobeError, OSError) as exc:
+        # The hint belongs to the refusal to overwrite, not to every error.
+        hint = " (pass --force to replace it)" if dest.is_file() and not force else ""
         typer.echo(f"error: {exc}{hint}", err=True)
         raise typer.Exit(2) from exc
 

@@ -285,3 +285,75 @@ def test_promptfoo_skips_tests_that_carry_no_attack(tmp_path):
         )
     )
     assert [s.text for s in import_promptfoo(path)] == ["the real attack"]
+
+
+def test_jsonl_lines_split_on_newlines_only(tmp_path):
+    """`splitlines` also breaks on U+2028 and friends, which JSON allows raw
+    inside a string. Reproduced as a spurious "line 1 is not JSON"."""
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        json.dumps({"text": "a\u2028b\x85c"}, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    assert [s.text for s in import_jsonl(path)] == ["a\u2028b\x85c"]
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "match"),
+    [
+        ("vars.yaml", "tests:\n  - vars: [1, 2]\n", "vars"),
+        ("meta.yaml", "tests:\n  - vars: {prompt: x}\n    metadata: [1]\n", "metadata"),
+        ("tests.yaml", "tests: 5\n", "tests"),
+    ],
+)
+def test_malformed_promptfoo_shapes_are_seed_errors(tmp_path, name, body, match):
+    """Reproduced as AttributeError and TypeError tracebacks."""
+    path = tmp_path / name
+    path.write_text(body)
+    with pytest.raises(SeedError, match=match):
+        import_promptfoo(path)
+
+
+@pytest.mark.parametrize(
+    ("line", "match"),
+    [
+        ('{"text": "x", "tags": "abc"}', "tags"),
+        ('{"text": "x", "tags": 5}', "tags"),
+        ('{"text": "x", "tags": [1]}', "tags"),
+    ],
+)
+def test_jsonl_tags_must_be_a_list_of_strings(tmp_path, line, match):
+    """A string was split into one tag per character."""
+    path = tmp_path / "s.jsonl"
+    path.write_text(line + "\n")
+    with pytest.raises(SeedError, match=match):
+        import_jsonl(path)
+
+
+def test_a_file_that_is_not_utf8_is_a_seed_error(tmp_path):
+    path = tmp_path / "s.jsonl"
+    path.write_bytes(b'{"text": "\xff"}\n')
+    with pytest.raises(SeedError, match="UTF-8"):
+        import_jsonl(path)
+
+
+def test_a_lone_surrogate_is_a_seed_error(tmp_path):
+    path = tmp_path / "s.jsonl"
+    path.write_text('{"text": "\\ud800 x"}\n')
+    with pytest.raises(SeedError, match="surrogate"):
+        import_jsonl(path)
+
+
+def test_seed_files_are_read_as_utf8(tmp_path, monkeypatch):
+    import pathlib
+
+    seen = []
+    real = pathlib.Path.read_text
+
+    def spy(self, *args, **kwargs):
+        seen.append(kwargs.get("encoding"))
+        return real(self, *args, **kwargs)
+
+    dest = write_seed_file(import_agentdojo(AGENTDOJO), tmp_path / "s.yaml")
+    monkeypatch.setattr(pathlib.Path, "read_text", spy)
+    load_seeds([dest])
+    assert seen and set(seen) == {"utf-8"}

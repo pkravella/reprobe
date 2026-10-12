@@ -97,3 +97,11 @@ def test_bench_with_an_unknown_agent_is_a_clean_error(tmp_path, monkeypatch):
     assert result.exit_code == 2
     assert "nope" in result.output
     assert not (tmp_path / "r.md").exists()
+
+
+def test_bench_refuses_an_unwritable_report_before_spending_anything(tmp_path, monkeypatch):
+    """The report was written only after the whole run; a bad --out lost it."""
+    (tmp_path / "out").mkdir()
+    result, built = _bench(tmp_path, monkeypatch, "--out", str(tmp_path / "out"), "--force")
+    assert result.exit_code == 2
+    assert built == []

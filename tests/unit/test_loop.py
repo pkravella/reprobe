@@ -441,3 +441,40 @@ def test_the_run_reports_both_violation_counts(minimal_scenario, tmp_path):
     out = fuzz(_config(minimal_scenario, trials=12), sandbox=always, store=RunStore(tmp_path))
     assert out.violating_trials == 12
     assert 0 < len(out.violations) <= 12
+
+
+def test_the_first_violation_is_counted_in_dispatch_order(minimal_scenario, tmp_path):
+    """The benchmark read it off the trial store, which is in completion order,
+    so above concurrency 1 the same seed reported different numbers."""
+
+    def first(path):
+        gradient = _gradient_sandbox()
+        out = fuzz(
+            _config(minimal_scenario, trials=60, concurrency=4),
+            sandbox=FakeSandbox(_jittery(gradient.run)),
+            store=RunStore(tmp_path / path),
+        )
+        return out.first_violation
+
+    runs = {first(p) for p in ("a", "b", "c")}
+    assert len(runs) == 1 and None not in runs
+
+
+def test_a_trial_that_never_ran_is_not_counted_as_run(minimal_scenario, tmp_path, monkeypatch):
+    """A trial that lost the race for the last of the budget raised before it
+    ran, and was still counted in `trials` -- which the benchmark divides by."""
+    import reprobe.loop as loop
+
+    real = loop.run_trial
+    calls = {"n": 0}
+
+    def sometimes_lost(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise BudgetExceeded("usd cap reached")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(loop, "run_trial", sometimes_lost)
+    sandbox = FakeSandbox(lambda s: clean_result())
+    out = fuzz(_config(minimal_scenario, trials=6), sandbox=sandbox, store=RunStore(tmp_path))
+    assert out.trials == len(sandbox.calls) == 5

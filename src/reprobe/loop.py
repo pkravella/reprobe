@@ -111,6 +111,11 @@ class FuzzResult(BaseModel):
     #: actually found. Collapsing payloads that reach the *same violating
     #: action* into one finding is R16's job, in triage.
     violating_trials: int = 0
+    #: 1-based position, in dispatch order, of the first trial that violated;
+    #: None if none did. Results are absorbed in dispatch order, so this is a
+    #: function of the seed and the concurrency, unlike the trial store's
+    #: order, which is the order trials finished in.
+    first_violation: int | None = None
     harness_failures: int = 0
     cost_usd: float = 0.0
     scheduler_stats: dict[str, Any] = Field(default_factory=dict)
@@ -192,6 +197,7 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
         )
 
     def absorb(candidate: Candidate, record: TrialRecord) -> None:
+        state.ran += 1
         if record.harness_error:
             # No verdict and no trace worth believing. Fingerprinting it would
             # teach the scheduler that crashing is new behaviour worth chasing.
@@ -203,6 +209,8 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
         if not record.violated:
             return
         state.violating_trials += 1
+        if state.first_violation is None:
+            state.first_violation = state.ran
         if candidate.id not in state.found:
             finding = CandidateFinding(
                 candidate=candidate,
@@ -227,7 +235,7 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
         in_flight: deque[tuple[Future[TrialRecord], Candidate]] = deque()
         while state.dispatched < config.caps.max_trials:
             if len(in_flight) >= workers:
-                _absorb_oldest(in_flight, absorb, lock)
+                state.lost += not _absorb_oldest(in_flight, absorb, lock)
             try:
                 ledger.check_can_dispatch()
             except BudgetExceeded:
@@ -238,13 +246,15 @@ def fuzz(config: FuzzConfig, *, sandbox: SandboxProtocol, store: RunStore) -> Fu
             in_flight.append((pool.submit(one_trial, candidate, trial_seed), candidate))
             state.dispatched += 1
         while in_flight:
-            _absorb_oldest(in_flight, absorb, lock)
+            state.lost += not _absorb_oldest(in_flight, absorb, lock)
 
     return FuzzResult(
         run_id=run_id,
-        trials=state.dispatched,
+        # Dispatched, less any that lost the race for the budget and never ran.
+        trials=state.dispatched - state.lost,
         violations=list(state.found.values()),
         violating_trials=state.violating_trials,
+        first_violation=state.first_violation,
         harness_failures=state.harness_failures,
         cost_usd=ledger.spent_usd,
         scheduler_stats=scheduler.stats(),
@@ -258,6 +268,9 @@ class _LoopState:
 
     def __init__(self) -> None:
         self.dispatched = 0
+        self.ran = 0
+        self.lost = 0
+        self.first_violation: int | None = None
         self.violating_trials = 0
         self.harness_failures = 0
         self.found: dict[str, CandidateFinding] = {}
@@ -267,14 +280,16 @@ def _absorb_oldest(
     in_flight: deque[tuple[Future[TrialRecord], Candidate]],
     absorb: Any,
     lock: threading.Lock,
-) -> None:
-    """Wait for the oldest trial in flight and absorb it, whatever finished first."""
+) -> bool:
+    """Wait for the oldest trial in flight and absorb it, whatever finished
+    first. False when it never ran."""
     future, candidate = in_flight.popleft()
     try:
         record = future.result()
     except BudgetExceeded:
         # A trial that lost the race for the last of the budget. Not a
         # harness failure and not a result; it simply never ran.
-        return
+        return False
     with lock:
         absorb(candidate, record)
+    return True

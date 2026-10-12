@@ -26,9 +26,13 @@ without the token is tagged `untargeted`: it exercises an injection's framing,
 and reaches a violation only if the agent wanders into one. The CLI says how
 many there are, so a search cannot spend its budget on them unannounced.
 
-**Nothing is skipped silently.** A malformed line, a log that is not a log, an
-import that finds nothing: each is a `SeedError` naming where. A seed that was
-dropped on the way in is one that silently never ran.
+**Malformed input is an error, not a smaller import.** A malformed JSONL line,
+a Promptfoo test whose `vars` or `metadata` is not a mapping, a file that is not
+UTF-8, a lone surrogate, an import that finds nothing: each is a `SeedError`
+naming where. What is skipped, deliberately, is input that is well-formed but
+not an attack: a Promptfoo test with no inject var (a config can mix ordinary
+tests in), a JSON file in an AgentDojo directory that is not a run log, and the
+`none` attack's empty logs.
 """
 
 from __future__ import annotations
@@ -55,6 +59,10 @@ def _prefix(source: str) -> str:
 
 
 def _seed(text: str, *, family: str, source: str, tags: Iterable[str] = ()) -> Seed:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise SeedError(f"seed text from {source} contains a lone surrogate: {exc}") from exc
     tags = list(tags)
     if CANARY_PATH_TOKEN not in text:
         tags.append(UNTARGETED_TAG)
@@ -79,6 +87,8 @@ def _read(path: Path) -> str:
         return Path(path).read_text(encoding="utf-8")
     except OSError as exc:
         raise SeedError(f"cannot read {path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise SeedError(f"{path} is not UTF-8 text: {exc}") from exc
 
 
 def import_promptfoo(path: Path) -> list[Seed]:
@@ -97,13 +107,20 @@ def import_promptfoo(path: Path) -> list[Seed]:
     # A config can mix ordinary tests with generated red-team ones; a test with
     # no inject var is not an attack. The empty-import error below still fires
     # when nothing is left.
-    for test in raw.get("tests") or []:
+    tests = raw.get("tests") or []
+    if not isinstance(tests, list):
+        raise SeedError(f"{path}: promptfoo `tests` must be a list, not {type(tests).__name__}")
+    for index, test in enumerate(tests):
         if not isinstance(test, dict):
             continue
-        text = (test.get("vars") or {}).get(var)
+        variables = test.get("vars") or {}
+        meta = test.get("metadata") or {}
+        for field, value in (("vars", variables), ("metadata", meta)):
+            if not isinstance(value, dict):
+                raise SeedError(f"{path}: promptfoo tests[{index}].{field} must be a mapping")
+        text = variables.get(var)
         if not isinstance(text, str) or not text.strip():
             continue
-        meta = test.get("metadata") or {}
         plugin = str(meta.get("pluginId") or "promptfoo")
         strategy = meta.get("strategyId")
         seeds.append(
@@ -160,7 +177,9 @@ def import_agentdojo(path: Path) -> list[Seed]:
 
 def import_jsonl(path: Path) -> list[Seed]:
     seeds: list[Seed] = []
-    for number, line in enumerate(_read(path).splitlines(), 1):
+    # Not `splitlines`: it also breaks on U+2028, NEL and friends, which JSON
+    # allows raw inside a string.
+    for number, line in enumerate(_read(path).split("\n"), 1):
         if not line.strip():
             continue
         try:
@@ -172,12 +191,15 @@ def import_jsonl(path: Path) -> list[Seed]:
         text = item.get("text")
         if not isinstance(text, str) or not text.strip():
             raise SeedError(f"{path} line {number} has no `text`")
+        tags = item.get("tags") or []
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            raise SeedError(f"{path} line {number}: `tags` must be a list of strings")
         seeds.append(
             _seed(
                 text,
                 family=str(item.get("family") or "imported"),
                 source=str(item.get("source") or "jsonl"),
-                tags=[str(t) for t in item.get("tags") or []],
+                tags=tags,
             )
         )
     if not seeds:
