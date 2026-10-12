@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- The contributor and architecture docs describe the released state: what is built, which test lanes exist and which are still planned, and how a release is cut. `docs/scenarios.md` no longer says a changed scenario only warns; it fails the exported test, as it has since 0.1.0.
+
 ## [0.1.0] - 2026-10-11
 
 The first release. Everything in the PRD's P0 set, plus seed import (R14), duplicate grouping (R16) and the finding report (R17): a coding agent run on legitimate tasks in a disposable sandbox, a coverage-guided search over what an attacker controls, every violation confirmed with a reproduction rate and shrunk to a minimal payload, and each finding exported as a pytest suite and a GitHub Action that pass only once the exploit is shown fixed.

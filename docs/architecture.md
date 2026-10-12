@@ -83,6 +83,28 @@ report. `verify.py` re-measures a finding with a three-way verdict (FIXED,
 REPRODUCES, INCONCLUSIVE). Only FIXED passes. `bench.py` runs guided against
 random on equal trial budgets. `cli.py` is the command line.
 
+## How it is tested and shipped
+
+- **`ci.yml`**, on every push and pull request. `check` runs ruff, mypy and the
+  unit suite on Python 3.11 and 3.12 (the suite is at 100% coverage, with
+  `docker_sandbox.py` omitted because only a live daemon exercises it).
+  `integration` builds the free-lane images and runs the Docker lane against
+  the scripted fake agent. `hygiene` scans the tree for real-looking
+  credentials and for tracked planning documents. `ci-ok` is the single check
+  branch protection requires.
+- **`soak.yml`**, nightly: the harness-reliability gate, the slow statistical
+  checks and, only if a key is configured, a small paid adapter-drift check.
+- **`release.yml`**, on a `v*` tag only. `build` checks, refuses a tag that does
+  not match the package version, builds and test-installs the wheel. `publish`
+  is the only job that can mint a PyPI token and waits for a maintainer's
+  approval in the `pypi` environment. `github-release` creates the release from
+  the changelog section. Nothing else publishes.
+
+The test lanes are opt-in by environment variable: none for unit tests,
+`REPROBE_DOCKER_TESTS=1` for containers, `REPROBE_SLOW_TESTS=1` for the
+minutes-long statistical checks, `REPROBE_AGENT_TESTS=1` for real spend. An
+opted-in lane whose Docker daemon is missing fails rather than skips.
+
 ## Requirements traceability
 
 Each shipped requirement, and where it lives.

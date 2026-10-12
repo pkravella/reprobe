@@ -1,6 +1,6 @@
 # Contributing to Reprobe
 
-Thanks for looking. Reprobe's harness, search and triage layers are built (scenarios and a pack of ten, sandbox, observers, checks, agent adapters, the seed corpus and mutators, the coverage map and schedulers, the reproduction-rate estimator, the statistical shrinker, finding dedupe, and `reprobe run`/`soak`/`fuzz`/`triage`); export is not yet. Right now the most useful contributions are **scenarios**, **agent adapters**, and **design feedback** on the export layer.
+Thanks for looking. Reprobe 0.1.0 is released (`pip install reprobe-agents`): the whole pipeline from scenario to search, triage, report and an exported regression suite is built, and every measurement behind it, including the benchmark target it missed, is in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md). The most useful contributions now are **scenarios**, **agent adapters**, **results against real agents** (see "Lanes" below), and **benchmark targets with several distinct bugs**, which the headline metric needs and the current one lacks.
 
 ## Before you start
 
@@ -43,27 +43,28 @@ The adapter's job is narrow: build a command line, parse stdout into events, rep
 
 ## Development setup
 
-Once there is code to run (tracking issue: v0.1 implementation):
-
 ```bash
 git clone https://github.com/pkravella/reprobe
 cd reprobe
-uv sync --dev
-uv run pytest tests/unit -v     # fast, no Docker, no API keys, no cost
+uv sync --all-extras --dev
+uv run pytest tests/unit -q     # fast, no Docker, no API keys, no cost
 ```
 
-Reprobe is built so that **almost all of it can be developed and tested for free.** There are three lanes:
+Reprobe is built so that **almost all of it can be developed and tested for free.** The lanes:
 
-| Lane | What it covers | Needs |
-| --- | --- | --- |
-| Unit tests | Search, triage, shrinking, export algorithms | Nothing |
-| Fake-agent pipeline | The whole pipeline — containers, network isolation, `strace`, checks, coverage, scheduler, shrinker | Docker |
-| Local-model lane | A real agent CLI driving a model you host | Docker + a local model server |
+| Lane | What it covers | Needs | Status |
+| --- | --- | --- | --- |
+| Unit tests | Search, triage, shrinking, export, report and benchmark logic, on a fake sandbox | Nothing | Built; at 100% coverage |
+| Fake-agent pipeline | The whole pipeline: containers, network isolation, `strace`, checks, coverage, scheduler, shrinker, exported tests | Docker | Built |
+| Local-model lane | A real agent CLI driving a model you host | Docker + a local model server | Planned, not in 0.1.0 |
+| Real agents | Claude Code and Codex CLI on hosted models | Docker + your API key | Built; costs money |
 
 ```bash
-make images                                                 # build the sandbox images
-REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v   # still free
+make base mockgw fakeagent                                  # the free lane's images
+REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -q -m "docker and not slow"
 ```
+
+`make images` builds all five images, including the two that npm-install the real agent CLIs. The `slow` lane (`REPROBE_SLOW_TESTS=1`) adds the minutes-long statistical checks; the `agent` lane (`REPROBE_AGENT_TESTS=1`) spends real money and never runs automatically. An opted-in lane whose Docker daemon is missing fails rather than skips.
 
 **You should not need to spend money to contribute.** If a change can only be verified against a paid hosted agent, say so in the PR and a maintainer will run it.
 
@@ -71,7 +72,9 @@ REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v   # still free
 
 - Branch off `main`. One logical change per PR.
 - **Tests first.** This project is test-driven by design: a PR that changes behaviour without a test that would have caught the old behaviour will be sent back.
-- Keep `ruff check`, `ruff format --check`, `mypy` and `pytest tests/unit` green. CI runs all four.
+- Keep `ruff check`, `ruff format --check`, `mypy` and `pytest tests/unit` green. CI runs all four, and the Docker integration lane.
+- Keep unit coverage at 100%. If a line genuinely cannot be covered, say why in the PR.
+- Add a line to `CHANGELOG.md` under *Unreleased* for anything a user would notice.
 - [Conventional Commits](https://www.conventionalcommits.org/) for messages: `feat:`, `fix:`, `test:`, `docs:`, `refactor:`, `chore:`.
 - Explain *why* in the PR description, not just what. The diff shows what.
 
@@ -80,3 +83,10 @@ REPROBE_DOCKER_TESTS=1 uv run pytest tests/integration -v   # still free
 Open an issue with the **Bug report** template. For anything involving a trial, the trace is the evidence — include the run id and the relevant trace lines. "The check fired wrongly" is hard to act on; "`dangerous_command` fired on `chmod +x scripts/build.sh`, trace attached" is a fix.
 
 For a security vulnerability **in Reprobe itself**, do not open a public issue — see [SECURITY.md](SECURITY.md).
+
+## Releasing (maintainers)
+
+1. In a normal PR: set the version in both `pyproject.toml` and `src/reprobe/__init__.py` (a test checks they agree), and turn the changelog's *Unreleased* section into `## [X.Y.Z] - YYYY-MM-DD` with its link reference at the bottom.
+2. After it merges, tag that commit `vX.Y.Z` and push the tag. Nothing else publishes: pushes to `main` never reach PyPI.
+3. The `release` workflow checks, refuses a tag that does not match the package version, builds, and test-installs the wheel. Its `publish` job then waits in the `pypi` environment for a maintainer's approval, publishes with PyPI trusted publishing (no token), and the release job creates the GitHub release from the changelog section.
+4. PyPI versions are immutable: a mistake ships as a new version, never as a replacement.
