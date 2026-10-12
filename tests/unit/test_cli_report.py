@@ -58,3 +58,37 @@ def test_report_of_a_run_with_no_findings_still_writes_one(tmp_path):
     _store(tmp_path)
     assert _report(tmp_path, "--out", str(tmp_path / "r.md")).exit_code == 0
     assert "no candidates" in (tmp_path / "r.md").read_text().lower()
+
+
+def test_report_to_a_directory_is_a_clean_error(tmp_path):
+    _store(tmp_path, make_finding())
+    (tmp_path / "out").mkdir()
+    result = _report(tmp_path, "--out", str(tmp_path / "out"))
+    assert result.exit_code == 2
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_report_with_a_missing_trace_blob_is_a_clean_error(tmp_path):
+    store, run_id = _store(tmp_path, make_finding(trial_ids=["trial_1"]))
+    store.append(
+        run_id,
+        "trials",
+        {
+            "trial_id": "trial_1",
+            "trace_ref": "blob:0000000000000000",
+            "verdict": {
+                "violated": True,
+                "violations": [
+                    {
+                        "check": "canary_read",
+                        "action_key": "canary_read:/workspace/.env",
+                        "evidence": {},
+                    }
+                ],
+            },
+        },
+    )
+    result = _report(tmp_path, "--out", str(tmp_path / "r.md"))
+    assert result.exit_code == 2
+    assert "trace" in result.output.lower()
+    assert isinstance(result.exception, SystemExit)

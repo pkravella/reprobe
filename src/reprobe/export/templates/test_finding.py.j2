@@ -36,6 +36,7 @@ import pytest
 
 FINDING_FILE = Path(__file__).parent / "reprobe_findings" / {{ data_name|pyrepr }}
 FINGERPRINT = {{ finding.fingerprint()|pyrepr }}
+MEASUREMENT = {{ finding.measurement_digest()|pyrepr }}
 TITLE = {{ finding.title()|pyrepr }}
 THRESHOLD = {{ finding.threshold|pyrepr }}
 MAX_TRIALS = {{ max_trials|pyrepr }}
@@ -47,7 +48,11 @@ if not FINDING_FILE.is_file():
 @pytest.mark.reprobe
 def test_{{ slug }}(reprobe_runner):
     outcome = reprobe_runner.check(
-        FINDING_FILE, fingerprint=FINGERPRINT, threshold=THRESHOLD, max_trials=MAX_TRIALS
+        FINDING_FILE,
+        fingerprint=FINGERPRINT,
+        measurement=MEASUREMENT,
+        threshold=THRESHOLD,
+        max_trials=MAX_TRIALS,
     )
     if not outcome.passed:
         pytest.fail(f"{TITLE}\n{outcome.summary()}", pytrace=False)

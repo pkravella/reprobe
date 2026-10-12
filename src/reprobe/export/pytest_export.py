@@ -45,8 +45,10 @@ Decisions worth stating:
 from __future__ import annotations
 
 import ast
+import os
 import re
 import shutil
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -212,15 +214,20 @@ def _bundle_plan(
     return plan
 
 
-def _copy_scenarios(plan: Mapping[str, tuple[Path, Scenario]], root: Path) -> None:
-    if root.exists():
-        shutil.rmtree(root)
+def _stage_scenarios(plan: Mapping[str, tuple[Path, Scenario]], root: Path) -> None:
+    """Copy each scenario and its fixture under `root`, a staging directory."""
     for name, (path, scenario) in plan.items():
         target = root / name
+        # The name is validated where scenarios load; this keeps the bundle
+        # inside its directory even if that ever changes.
+        if not target.resolve().is_relative_to(root.resolve()):
+            raise ConfigError(f"scenario name {name!r} would bundle outside the suite")
         target.mkdir(parents=True)
-        shutil.copyfile(path, target / "scenario.yaml")
         relative = scenario.fixture_dir.resolve().relative_to(path.parent.resolve())
-        shutil.copytree(scenario.fixture_dir, target / relative, symlinks=True)
+        # `fixture: .` makes the scenario's own directory the fixture; the copy
+        # then lands on the directory just made, hence dirs_exist_ok.
+        shutil.copytree(scenario.fixture_dir, target / relative, symlinks=True, dirs_exist_ok=True)
+        shutil.copyfile(path, target / "scenario.yaml")
 
 
 def write_suite(
@@ -269,13 +276,27 @@ def write_suite(
 
     data_dir = dest / FINDINGS_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
-    stale = [p for p in dest.glob("test_*.py") if p not in files and _is_generated(p)]
-    stale += [p for p in data_dir.glob("*.json") if p not in files]
-    for path in stale:
-        path.unlink()
-    for path, text in files.items():
-        path.write_text(text, encoding="utf-8")
-    _copy_scenarios(plan, data_dir / SCENARIOS_DIR)
+    # Stage the bundle before touching anything already there: a copy that
+    # fails (an unreadable fixture file, a full disk) used to leave a suite
+    # with stale tests deleted and no scenarios, behind a traceback.
+    staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=data_dir))
+    try:
+        _stage_scenarios(plan, staging / SCENARIOS_DIR)
+        stale = [p for p in dest.glob("test_*.py") if p not in files and _is_generated(p)]
+        stale += [p for p in data_dir.glob("*.json") if p not in files]
+        for path in stale:
+            path.unlink()
+        for path, text in files.items():
+            path.write_text(text, encoding="utf-8")
+        bundle = data_dir / SCENARIOS_DIR
+        if bundle.exists():
+            shutil.rmtree(bundle)
+        (staging / SCENARIOS_DIR).mkdir(exist_ok=True)
+        os.replace(staging / SCENARIOS_DIR, bundle)
+    except OSError as exc:
+        raise ConfigError(f"could not write the suite in {dest}: {exc}") from exc
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return list(files)
 
 
@@ -289,6 +310,8 @@ class SuiteEntry:
     fingerprint: str
     threshold: float
     max_trials: int
+    #: None for a suite exported before the measurement digest existed.
+    measurement: str | None = None
 
 
 def _literals(source: str) -> dict[str, object]:
@@ -305,23 +328,35 @@ def _literals(source: str) -> dict[str, object]:
 
 
 def suite_entries(dest: Path) -> list[SuiteEntry]:
-    """Read back the generated tests in `dest`; hand-written ones are ignored."""
+    """Read back the generated tests in `dest`; hand-written ones are ignored.
+
+    A generated test whose constants are missing or mangled is refused by
+    name, rather than raising whatever the parse happened to hit.
+    """
     dest = Path(dest)
     entries: list[SuiteEntry] = []
     for test_file in sorted(dest.glob("test_*.py")):
         if not _is_generated(test_file):
             continue
-        values = _literals(test_file.read_text(encoding="utf-8"))
-        fingerprint = str(values["FINGERPRINT"])
-        entries.append(
-            SuiteEntry(
-                test_file=test_file,
-                finding_file=dest / FINDINGS_DIR / f"{fingerprint.split(':', 1)[1]}.json",
-                fingerprint=fingerprint,
-                threshold=float(values["THRESHOLD"]),  # type: ignore[arg-type]
-                max_trials=int(values["MAX_TRIALS"]),  # type: ignore[call-overload]
+        try:
+            values = _literals(test_file.read_text(encoding="utf-8"))
+            fingerprint = str(values["FINGERPRINT"])
+            measurement = values.get("MEASUREMENT")
+            entries.append(
+                SuiteEntry(
+                    test_file=test_file,
+                    finding_file=dest / FINDINGS_DIR / f"{fingerprint.split(':', 1)[1]}.json",
+                    fingerprint=fingerprint,
+                    threshold=float(values["THRESHOLD"]),  # type: ignore[arg-type]
+                    max_trials=int(values["MAX_TRIALS"]),  # type: ignore[call-overload]
+                    measurement=None if measurement is None else str(measurement),
+                )
             )
-        )
+        except (KeyError, IndexError, TypeError, ValueError, SyntaxError) as exc:
+            raise ConfigError(
+                f"{test_file.name} is a generated test that no longer parses as one "
+                f"({type(exc).__name__}: {exc}); re-export the suite"
+            ) from exc
     return entries
 
 

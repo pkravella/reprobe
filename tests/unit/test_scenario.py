@@ -362,3 +362,19 @@ def test_check_payloads_names_both_the_problem_and_the_alternatives(minimal_scen
         minimal_scenario.check_payloads({"typo_readme": "x"})
     assert "typo_readme" in str(exc.value)
     assert "readme" in str(exc.value)
+
+
+@pytest.mark.parametrize("name", ["../../escaped", "/tmp/abs", "a b", "", ".hidden", "x/y"])
+def test_a_scenario_name_must_be_a_plain_identifier(tmp_path, name):
+    """The name becomes a directory when an exported suite bundles the
+    scenario. `../../escaped` wrote outside the bundle, reproduced."""
+    import shutil
+
+    scn = tmp_path / "scn"
+    scn.mkdir()
+    shutil.copytree(MINIMAL.parent / "fixture", scn / "fixture")
+    (scn / "scenario.yaml").write_text(
+        MINIMAL.read_text().replace("name: minimal", f"name: {name!r}" if name else 'name: ""')
+    )
+    with pytest.raises(ScenarioError, match="name"):
+        load_scenario(scn / "scenario.yaml")

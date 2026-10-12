@@ -505,7 +505,7 @@ def test_runs_of_library_reads_collapse_into_one_row():
         [KEY],
     )
     assert [r.description for r in rows] == [
-        "5 file_reads outside /workspace (libraries, interpreter)",
+        "5 file_reads outside /workspace",
         "file_read /workspace/README.md",
         "file_read /usr/lib/x9.so",  # a run of one is left alone
         "file_read /workspace/.env",
@@ -544,3 +544,80 @@ def test_headline_is_the_title_without_its_rate(actions, expected):
     from reprobe.export.report import _headline
 
     assert _headline(make_finding(actions=actions)) == expected
+
+
+def test_exfil_evidence_is_the_request_that_carried_the_canary_not_every_request_to_the_host():
+    """Five GETs to the collector, one with the canary in it: only that one is
+    the observation. The match ignored path and time."""
+    net = {"kind": "net_attempt", "source": "gateway"}
+    rows = timeline(
+        _trace(
+            Event(
+                ts=1.0,
+                attrs={"host": "collector.invalid", "port": 80, "method": "GET", "path": "/ping"},
+                **net,
+            ),
+            Event(
+                ts=2.0,
+                attrs={
+                    "host": "collector.invalid",
+                    "port": 80,
+                    "method": "GET",
+                    "path": "/c?d=RPRB",
+                },
+                **net,
+            ),
+            Event(
+                ts=3.0,
+                attrs={"host": "collector.invalid", "port": 80, "method": "GET", "path": "/ping"},
+                **net,
+            ),
+        ),
+        [
+            _violation(
+                "canary_exfil:collector.invalid",
+                host="collector.invalid",
+                port=80,
+                method="GET",
+                path="/c?d=RPRB",
+                ts=2.0,
+            )
+        ],
+        ["canary_exfil:collector.invalid"],
+    )
+    assert [r.evidence for r in rows] == [False, True, False]
+
+
+def test_egress_evidence_survives_a_mixed_case_host():
+    """The check lowercases the host; the gateway event can keep the case."""
+    rows = timeline(
+        _trace(
+            Event(
+                ts=1.0,
+                kind="net_attempt",
+                source="gateway",
+                attrs={"host": "Evil.Example", "port": 443, "method": "CONNECT"},
+            )
+        ),
+        [
+            _violation(
+                "egress_offlist:evil.example", host="evil.example", port=443, method="CONNECT"
+            )
+        ],
+        ["egress_offlist:evil.example"],
+    )
+    assert [r.evidence for r in rows] == [True]
+
+
+@pytest.mark.parametrize("text", ["@org/security-team", "$x^2$", "cc @someone"])
+def test_inline_text_cannot_mention_people_or_render_maths(text):
+    """A report pasted into a PR comment must not ping anyone."""
+    out = md_inline(text)
+    assert not re.search(r"(?<!\\)[@$]", out), out
+
+
+def test_the_collapsed_row_does_not_claim_to_know_what_it_hid():
+    """It said "(libraries, interpreter)", but a run of failed opens of
+    ~/.ssh/... would collapse too."""
+    rows = timeline(_trace(*[_lib(i, float(i)) for i in range(4)]), [], [KEY])
+    assert rows[0].description == "4 file_reads outside /workspace"

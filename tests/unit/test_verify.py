@@ -541,3 +541,70 @@ def test_the_summary_shows_the_deciding_bound_precisely_enough_to_read():
     repro = run_sequential(_scripted([True] * 2)[0], threshold=0.30, max_trials=20)
     assert "upper bound 0.299 < 0.30" in fixed.summary()
     assert "lower bound 0.342 >= 0.30" in repro.summary()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("agent_profile", "never"), ("model_id", "other"), ("agent_id", "claude-code")],
+)
+def test_load_finding_refuses_a_record_edited_away_from_its_measurement(tmp_path, field, value):
+    finding = make_finding(agent_id="fake-agent", agent_profile="always")
+    record = finding.to_record()
+    if field == "agent_profile":
+        record[field] = value
+    else:
+        record["agent_meta"][field] = value
+    with pytest.raises(ConfigError, match="measure"):
+        load_finding(
+            _write(tmp_path, record),
+            fingerprint=finding.fingerprint(),
+            measurement=finding.measurement_digest(),
+        )
+
+
+def test_load_finding_reads_utf8_whatever_the_locale(tmp_path, monkeypatch):
+    """Payloads are full of non-ASCII on purpose; the suite is written as UTF-8."""
+    import pathlib
+
+    seen = []
+    real = pathlib.Path.read_text
+
+    def spy(self, *args, **kwargs):
+        seen.append(kwargs.get("encoding"))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", spy)
+    finding = make_finding(payload="caf\u00e9 \u200b")
+    load_finding(_write(tmp_path, finding.to_record()), fingerprint=finding.fingerprint())
+    assert seen and set(seen) == {"utf-8"}
+
+
+def test_an_unreachable_docker_is_a_harness_error_not_a_traceback(monkeypatch):
+    import docker.errors
+
+    import reprobe.sandbox.docker_sandbox as docker_sandbox
+    from reprobe.agents import get_adapter
+    from reprobe.errors import HarnessError
+    from reprobe.verify import _docker_sandbox
+
+    def unreachable(**kwargs):
+        raise docker.errors.DockerException("Error while fetching server API version")
+
+    monkeypatch.setattr(docker_sandbox, "DockerSandbox", unreachable)
+    with pytest.raises(HarnessError, match="cannot reach Docker"):
+        _docker_sandbox(get_adapter("fake-agent"))
+
+
+def test_an_unknown_profile_override_is_refused_at_construction(tmp_path):
+    with pytest.raises(ConfigError, match="nevr"):
+        FindingRunner(tmp_path, max_usd=1.0, profile_override="nevr")
+
+
+def test_a_suite_from_before_the_measurement_digest_still_refuses_an_unknown_agent(
+    minimal, scenarios_root, tmp_path
+):
+    """Without MEASUREMENT (a 0.1.0 suite) the edit reaches the adapter lookup,
+    which must be a clean refusal, not a KeyError."""
+    runner = _runner(scenarios_root, FakeSandbox(_leaky), tmp_path)
+    with pytest.raises(ConfigError, match="cannot run"):
+        _check(runner, tmp_path, _finding(minimal, agent_id="nope"))

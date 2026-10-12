@@ -49,14 +49,14 @@ from pathlib import Path
 from reprobe.agents import AgentAdapter, AgentMeta, get_adapter
 from reprobe.agents.fake_agent import FakeAgentAdapter
 from reprobe.budget import BudgetCaps, BudgetLedger
-from reprobe.errors import BudgetExceeded, ConfigError
+from reprobe.errors import BudgetExceeded, ConfigError, HarnessError
 from reprobe.finding import Finding
 from reprobe.sandbox import SandboxProtocol
 from reprobe.scenario import Scenario, load_scenario
 from reprobe.shrink import env_knobs
 from reprobe.stats import RateEstimate, estimate
 from reprobe.store import RunStore
-from reprobe.trial import run_trial
+from reprobe.trial import known_profiles, run_trial
 
 DEFAULT_MAX_TRIALS = 20
 
@@ -173,24 +173,33 @@ def run_sequential(
     )
 
 
-def load_finding(path: Path, *, fingerprint: str) -> Finding:
+def load_finding(path: Path, *, fingerprint: str, measurement: str | None = None) -> Finding:
     """Read an exported finding, refusing one that no longer matches its test.
 
     The test file names the finding by fingerprint, which covers the payloads,
-    the violating actions and the scenario hash. A JSON file edited afterwards
-    would make the test measure something its own docstring does not describe.
+    the violating actions and the scenario hash, and by measurement digest, which
+    covers the agent, model, profile and removed prerequisites it is measured
+    with. A JSON file edited afterwards would make the test measure something
+    its own docstring does not describe. Suites exported before the measurement
+    digest existed pass none, and are checked by fingerprint alone.
     """
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"finding file {path} does not exist")
     try:
-        finding = Finding.from_record(json.loads(path.read_text()))
+        finding = Finding.from_record(json.loads(path.read_text(encoding="utf-8")))
     except (ValueError, KeyError, TypeError) as exc:  # pydantic's ValidationError is a ValueError
         raise ConfigError(f"{path} is not a valid exported finding: {exc}") from exc
     if finding.fingerprint() != fingerprint:
         raise ConfigError(
             f"{path.name} has fingerprint {finding.fingerprint()} but its test expects "
             f"{fingerprint}; the finding was edited after export -- re-export it instead"
+        )
+    if measurement is not None and finding.measurement_digest() != measurement:
+        raise ConfigError(
+            f"{path.name} would be measured with a different agent, model, profile or "
+            "environment than its test was exported with; the finding was edited after "
+            "export -- re-export it instead"
         )
     return finding
 
@@ -253,9 +262,16 @@ def _drift(recorded: AgentMeta, current: AgentMeta) -> tuple[str, ...]:
 
 
 def _docker_sandbox(adapter: AgentAdapter) -> SandboxProtocol:
+    import docker.errors
+
     from reprobe.sandbox.docker_sandbox import DockerSandbox
 
-    return DockerSandbox(infra_hosts=adapter.infra_hosts)
+    try:
+        return DockerSandbox(infra_hosts=adapter.infra_hosts)
+    except docker.errors.DockerException as exc:
+        # Not a crash with a docker-py traceback: the suite cannot be measured
+        # here, which is a harness failure the caller reports and fails on.
+        raise HarnessError(f"cannot reach Docker to run {adapter.id}: {exc}") from exc
 
 
 class FindingRunner:
@@ -293,12 +309,30 @@ class FindingRunner:
         )
         self._rng = random.Random(seed)
         self._seed = seed
+        if profile_override is not None and profile_override not in known_profiles():
+            raise ConfigError(
+                f"unknown fake-agent profile {profile_override!r}; known: {known_profiles()}"
+            )
         self._profile_override = profile_override
 
-    def check(self, path: Path, *, fingerprint: str, threshold: float, max_trials: int) -> Outcome:
+    def check(
+        self,
+        path: Path,
+        *,
+        fingerprint: str,
+        threshold: float,
+        max_trials: int,
+        measurement: str | None = None,
+    ) -> Outcome:
         check_decidable(threshold=threshold, max_trials=max_trials)
-        finding = load_finding(path, fingerprint=fingerprint)
-        adapter = get_adapter(finding.agent_meta.agent_id)
+        finding = load_finding(path, fingerprint=fingerprint, measurement=measurement)
+        try:
+            adapter = get_adapter(finding.agent_meta.agent_id)
+        except KeyError as exc:
+            raise ConfigError(
+                f"{Path(path).name} is for agent {finding.agent_meta.agent_id!r}, which this "
+                "version of reprobe cannot run"
+            ) from exc
         scenario = resolve_scenario(self._root, finding)
         profile = self._profile_for(finding, adapter)
         observed: list[AgentMeta] = []

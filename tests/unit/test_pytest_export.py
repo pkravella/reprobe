@@ -515,6 +515,7 @@ def test_a_fixed_finding_passes_and_surfaces_drift_as_warnings(tmp_path):
     assert path == module.FINDING_FILE
     assert kw == {
         "fingerprint": module.FINGERPRINT,
+        "measurement": module.MEASUREMENT,
         "threshold": module.THRESHOLD,
         "max_trials": module.MAX_TRIALS,
     }
@@ -549,3 +550,72 @@ def test_suite_entries_ignores_hand_written_tests(tmp_path):
 
 def test_suite_entries_is_empty_for_a_directory_with_no_suite(tmp_path):
     assert suite_entries(tmp_path) == []
+
+
+def test_a_scenario_whose_fixture_is_its_own_directory_bundles(tmp_path):
+    """`fixture: .` copied onto the directory it had just created and crashed
+    with FileExistsError, mid-write. Reproduced."""
+    src = tmp_path / "src"
+    shutil.copytree(MINIMAL.parent / "fixture", src)
+    (src / "scenario.yaml").write_text(
+        MINIMAL.read_text().replace("fixture: ./fixture", "fixture: .")
+    )
+    scenario = load_scenario(src / "scenario.yaml")
+    _suite(
+        [make_finding(scenario_hash=scenario.scenario_hash)],
+        tmp_path / "suite",
+        scenarios={"minimal": src / "scenario.yaml"},
+    )
+    bundled = tmp_path / "suite" / FINDINGS_DIR / "scenarios" / "minimal" / "scenario.yaml"
+    assert load_scenario(bundled).scenario_hash == scenario.scenario_hash
+
+
+def test_a_bundle_that_fails_to_copy_leaves_the_previous_suite_intact(tmp_path, monkeypatch):
+    """Reproduced: the failed export above took a suite from 8 files to 4,
+    with a traceback. A refusal must not be a half-destroyed suite."""
+    import reprobe.export.pytest_export as pe
+
+    suite = tmp_path / "suite"
+    _suite([make_finding()], suite)
+    before = {p: p.read_bytes() for p in suite.rglob("*") if p.is_file()}
+
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pe.shutil, "copytree", broken)
+    with pytest.raises(ConfigError, match="disk full"):
+        _suite([make_finding(actions=["b"])], suite)
+    after = {p: p.read_bytes() for p in suite.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_the_test_names_the_measurement_its_record_must_describe():
+    """The fingerprint covers payloads, actions and scenario hash, not the
+    agent, model or profile the test measures with. Editing `agent_profile`
+    to `never` in the JSON turned a live finding FIXED, reproduced."""
+    finding = make_finding(agent_id="fake-agent", agent_profile="always")
+    assert _assigned(render_test(finding), "MEASUREMENT") == finding.measurement_digest()
+
+
+def test_suite_entries_carry_the_measurement_digest(tmp_path):
+    finding = make_finding()
+    _suite([finding], tmp_path)
+    (entry,) = suite_entries(tmp_path)
+    assert entry.measurement == finding.measurement_digest()
+
+
+def test_a_mangled_generated_test_is_a_clean_refusal(tmp_path):
+    _suite([make_finding()], tmp_path)
+    test_file = next(tmp_path.glob("test_*.py"))
+    test_file.write_text(test_file.read_text().replace("FINGERPRINT = ", "NOT_IT = "))
+    with pytest.raises(ConfigError, match=test_file.name):
+        suite_entries(tmp_path)
+
+
+def test_the_bundle_stays_inside_its_directory_even_without_name_validation(tmp_path):
+    from reprobe.export.pytest_export import _stage_scenarios
+
+    scenario = load_scenario(MINIMAL)
+    with pytest.raises(ConfigError, match="outside the suite"):
+        _stage_scenarios({"../escaped": (MINIMAL, scenario)}, tmp_path / "root")
+    assert not (tmp_path / "escaped").exists()
