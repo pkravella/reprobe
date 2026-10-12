@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- The release workflow's check that the wheel did not ship a `reprobe_agents/` package could never fail, because the shell ignores a negated command's failure. It is now a real check, and every guard that can refuse a release, including that the tag is on `main` and that the changelog has a section for the version, runs before anything is uploaded. Release notes no longer end with the changelog's link lines.
+- The GitHub Action that `reprobe export --workflow` writes passes the agents' API keys only to the step that runs the suite, not to the steps that build images and install Reprobe. A suite path starting with `-` can no longer be read as a pytest option, and a finding for an unknown agent is a clean refusal rather than a traceback.
+
 ### Changed
 
 - The contributor and architecture docs describe the released state: what is built, which test lanes exist and which are still planned, and how a release is cut. `docs/scenarios.md` no longer says a changed scenario only warns; it fails the exported test, as it has since 0.1.0.
