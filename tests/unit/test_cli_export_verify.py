@@ -80,6 +80,10 @@ def test_export_writes_a_runnable_suite_and_says_what_next(tmp_path):
     assert "1 test(s)" in result.output
     assert "REPROBE_REGRESSION_TESTS=1" in result.output
     assert "reprobe verify" in result.output
+    # Not `uv run pytest`: that works only inside a Reprobe checkout, and an
+    # exported suite lives in somebody else's repository.
+    assert "uv run" not in result.output
+    assert "pytest" in result.output
 
 
 def test_export_writes_one_test_per_duplicate_group_by_default(tmp_path):

@@ -576,7 +576,7 @@ def export(
         typer.echo(f"workflow {workflow} (spends agent budget on its schedule: {schedule})")
     typer.echo(
         f"suite    {dest} ({tests} test(s) from {len(findings)} finding(s))\n\n"
-        f"next: {OPT_IN_ENV}=1 uv run pytest {dest} -v\n"
+        f"next: {OPT_IN_ENV}=1 pytest {dest} -v   (with pytest and reprobe-agents installed)\n"
         f"  or: reprobe verify {dest}"
     )
 
