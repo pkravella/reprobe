@@ -6,7 +6,7 @@ It runs a coding agent on normal tasks inside a throwaway sandbox, and keeps rew
 
 ---
 
-> ### Status: v0.1.0 is out
+> ### Status: v0.1.1 is out
 >
 > It's on PyPI as [`reprobe-agents`](https://pypi.org/project/reprobe-agents/).
 > The whole pipeline is built: ten example scenarios, the sandbox and its mock
@@ -125,7 +125,7 @@ The sandbox images get built from the repository rather than pulled from a
 registry, so to run trials you also need a checkout of the same release:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/pkravella/reprobe
+git clone --branch v0.1.1 https://github.com/pkravella/reprobe
 cd reprobe
 make base mockgw fakeagent            # add claude-code / codex-cli for real agents
 ```

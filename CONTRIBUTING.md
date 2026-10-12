@@ -1,6 +1,6 @@
 # Contributing to Reprobe
 
-Thanks for looking. Reprobe 0.1.0 is released (`pip install reprobe-agents`): the whole pipeline from scenario to search, triage, report and an exported regression suite is built, and every measurement behind it, including the benchmark target it missed, is in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md). The most useful contributions now are **scenarios**, **agent adapters**, **results against real agents** (see "Lanes" below), and **benchmark targets with several distinct bugs**, which the headline metric needs and the current one lacks.
+Thanks for looking. Reprobe 0.1.1 is released (`pip install reprobe-agents`): the whole pipeline from scenario to search, triage, report and an exported regression suite is built, and every measurement behind it, including the benchmark target it missed, is in [docs/benchmark-v0.1.md](docs/benchmark-v0.1.md). The most useful contributions now are **scenarios**, **agent adapters**, **results against real agents** (see "Lanes" below), and **benchmark targets with several distinct bugs**, which the headline metric needs and the current one lacks.
 
 ## Before you start
 
@@ -56,7 +56,7 @@ Reprobe is built so that **almost all of it can be developed and tested for free
 | --- | --- | --- | --- |
 | Unit tests | Search, triage, shrinking, export, report and benchmark logic, on a fake sandbox | Nothing | Built; at 100% coverage |
 | Fake-agent pipeline | The whole pipeline: containers, network isolation, `strace`, checks, coverage, scheduler, shrinker, exported tests | Docker | Built |
-| Local-model lane | A real agent CLI driving a model you host | Docker + a local model server | Planned, not in 0.1.0 |
+| Local-model lane | A real agent CLI driving a model you host | Docker + a local model server | Planned, not in 0.1.1 |
 | Real agents | Claude Code and Codex CLI on hosted models | Docker + your API key | Built; costs money |
 
 ```bash
