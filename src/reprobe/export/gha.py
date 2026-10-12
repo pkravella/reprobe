@@ -86,6 +86,9 @@ def render_workflow(
     _check_schedule(schedule)
     if "${{" in suite_dir:
         raise ConfigError(f"suite_dir {suite_dir!r} contains an Actions expression")
+    # First: it turns an unknown agent into a ConfigError, which `_images`
+    # below would otherwise hit as a bare KeyError.
+    required_env = _required_env(findings)
     env = _env()
     env.filters["comment"] = _doc
     env.filters["yamlstr"] = json.dumps
@@ -97,7 +100,7 @@ def render_workflow(
         repository=REPROBE_REPOSITORY,
         source_dir=SOURCE_DIR,
         images=_images(findings),
-        required_env=_required_env(findings),
+        required_env=required_env,
         max_usd=max_usd,
         timeout_minutes=timeout_minutes,
     )

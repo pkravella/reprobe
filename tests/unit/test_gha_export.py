@@ -53,12 +53,16 @@ def test_the_token_is_read_only():
     assert _doc()["permissions"] == {"contents": "read"}
 
 
+def _suite_step(doc):
+    return next(s for s in _job(doc)["steps"] if "pytest" in str(s.get("run", "")))
+
+
 def test_only_the_secrets_the_findings_agents_need_are_passed():
-    claude = _job(_doc([make_finding(agent_id="claude-code")]))["env"]
+    claude = _suite_step(_doc([make_finding(agent_id="claude-code")]))["env"]
     assert claude["ANTHROPIC_API_KEY"] == "${{ secrets.ANTHROPIC_API_KEY }}"
     assert "OPENAI_API_KEY" not in claude
-    fake = _job(_doc([make_finding(agent_id="fake-agent", agent_profile="always")]))["env"]
-    assert not any("secrets." in str(v) for v in fake.values())
+    fake = _suite_step(_doc([make_finding(agent_id="fake-agent", agent_profile="always")]))
+    assert "env" not in fake
 
 
 def test_no_credential_literal_ever_appears():
@@ -109,7 +113,7 @@ def test_the_suite_path_reaches_the_shell_as_a_variable_not_as_text():
     doc = _doc(suite_dir="tests/my suite;rm -rf ~")
     assert _job(doc)["env"]["REPROBE_SUITE"] == "tests/my suite;rm -rf ~"
     assert all("rm -rf" not in r for r in _runs(doc))
-    assert any('"$REPROBE_SUITE"' in r for r in _runs(doc))
+    assert any('"./$REPROBE_SUITE"' in r for r in _runs(doc))
 
 
 def test_a_development_version_must_name_its_ref(monkeypatch):
@@ -186,3 +190,27 @@ def test_write_workflow_creates_its_directory(tmp_path):
     path = write_workflow([make_finding()], dest, reprobe_ref=REF)
     assert path == dest
     assert yaml.safe_load(dest.read_text())["name"] == "reprobe"
+
+
+def test_a_finding_for_an_unknown_agent_is_a_clean_refusal():
+    """The image list was computed before the agent was checked, so this was a
+    raw KeyError and a traceback."""
+    with pytest.raises(ConfigError, match="nope"):
+        render_workflow([make_finding(agent_id="nope")], reprobe_ref=REF)
+
+
+def test_secrets_reach_only_the_step_that_runs_the_suite():
+    """Not the job: the image build and the package build run code from a
+    checkout of a mutable tag, and need no API key."""
+    job = _job(_doc([make_finding(agent_id="claude-code")]))
+    assert not any("secrets." in str(v) for v in job["env"].values())
+    run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
+    assert run["env"]["ANTHROPIC_API_KEY"] == "${{ secrets.ANTHROPIC_API_KEY }}"
+    build = next(s for s in job["steps"] if "make" in str(s.get("run", "")))
+    assert "env" not in build
+
+
+def test_a_suite_path_starting_with_a_dash_is_not_an_option():
+    """pytest has no `--`; a leading `./` keeps the path a path."""
+    run = next(r for r in _runs(_doc()) if "pytest" in r)
+    assert '"./$REPROBE_SUITE"' in run
