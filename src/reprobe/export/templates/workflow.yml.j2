@@ -29,8 +29,7 @@ jobs:
       REPROBE_REGRESSION_TESTS: "1"
       REPROBE_MAX_USD: {{ max_usd|string|yamlstr }}
       REPROBE_SUITE: {{ suite_dir|yamlstr }}
-{% for name in required_env %}      {{ name }}: ${{ '{{' }} secrets.{{ name }} {{ '}}' }}
-{% endfor %}    steps:
+    steps:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -41,4 +40,8 @@ jobs:
       - name: Build the sandbox images
         run: make -C {{ source_dir }} {{ images|join(' ') }}
       - name: Run the Reprobe regression suite
-        run: uv run --no-project --with ./{{ source_dir }} --with pytest pytest "$REPROBE_SUITE" -v
+        # The API keys reach this step only: the image and package builds above
+        # run code from a checkout and need none.
+{% if required_env %}        env:
+{% for name in required_env %}          {{ name }}: ${{ '{{' }} secrets.{{ name }} {{ '}}' }}
+{% endfor %}{% endif %}        run: uv run --no-project --with ./{{ source_dir }} --with pytest pytest "./$REPROBE_SUITE" -v

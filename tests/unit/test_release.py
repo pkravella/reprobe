@@ -128,13 +128,6 @@ def test_the_licence_and_notice_ship_with_the_package():
     assert "licenses/LICENSE" in runs and "licenses/NOTICE" in runs
 
 
-def test_release_notes_turn_relative_links_into_links_at_the_tag():
-    """The changelog links `docs/...` relative to the repo, which resolves to
-    nothing on a release page. The notes step pins them to the tag."""
-    release = _workflow()["jobs"]["github-release"]
-    assert "blob/${GITHUB_REF_NAME}/" in _runs(release)
-
-
 def test_no_licence_classifier_alongside_the_spdx_expression():
     """PEP 639: with `License-Expression` set, a `License ::` classifier is
     deprecated, and tools are allowed to reject the pair. The build backend
@@ -142,3 +135,113 @@ def test_no_licence_classifier_alongside_the_spdx_expression():
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert pyproject["project"]["license"] == "Apache-2.0"
     assert not [c for c in pyproject["project"]["classifiers"] if c.startswith("License ::")]
+
+
+# --- the steps themselves, run rather than read -----------------------------------
+
+
+def _step(job, needle):
+    return next(
+        s["run"] for s in _workflow()["jobs"][job]["steps"] if needle in str(s.get("run", ""))
+    )
+
+
+def _run_wheel_check(tmp_path, listing):
+    """Run the wheel-content step against a faked `unzip -l` listing."""
+    import os
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "unzip").write_text(f"#!/bin/sh\ncat <<'EOF'\n{listing}\nEOF\n")
+    (bin_dir / "unzip").chmod(0o755)
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "x.whl").write_text("")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    return subprocess.run(
+        ["bash", "-e", "-c", _step("build", "unzip -l")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+GOOD_WHEEL = "\n".join(
+    [
+        "reprobe/export/templates/test_finding.py.j2",
+        "reprobe/export/templates/workflow.yml.j2",
+        "reprobe/export/templates/report.html.j2",
+        "reprobe_agents-0.1.0.dist-info/licenses/LICENSE",
+        "reprobe_agents-0.1.0.dist-info/licenses/NOTICE",
+    ]
+)
+
+
+def test_the_wheel_check_passes_a_good_wheel(tmp_path):
+    assert _run_wheel_check(tmp_path, GOOD_WHEEL).returncode == 0
+
+
+def test_the_wheel_check_fails_a_wheel_that_ships_the_distribution_name_as_a_package(tmp_path):
+    """`! grep -q` under `bash -e` never fails a step: -e ignores a negated
+    command, so this guard was green whatever the wheel contained."""
+    result = _run_wheel_check(tmp_path, GOOD_WHEEL + "\nreprobe_agents/__init__.py")
+    assert result.returncode != 0
+
+
+def test_the_wheel_check_fails_a_wheel_without_its_licence(tmp_path):
+    listing = GOOD_WHEEL.replace("licenses/NOTICE", "nothing")
+    assert _run_wheel_check(tmp_path, listing).returncode != 0
+
+
+def _notes(tmp_path, changelog):
+    import os
+    import subprocess
+
+    (tmp_path / "CHANGELOG.md").write_text(changelog)
+    env = {**os.environ, "GITHUB_REF_NAME": "v0.1.0", "GITHUB_REPOSITORY": "o/r"}
+    result = subprocess.run(
+        ["bash", "-e", "-c", _step("build", "CHANGELOG.md")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    notes = tmp_path / "notes.md"
+    return result, notes.read_text() if notes.exists() else ""
+
+
+def test_release_notes_are_the_section_alone_with_links_pinned_to_the_tag(tmp_path):
+    result, notes = _notes(tmp_path, (ROOT / "CHANGELOG.md").read_text())
+    assert result.returncode == 0, result.stderr
+    assert "## [0.1.0]" not in notes
+    assert not re.search(r"^\[[^\]]+\]: ", notes, flags=re.M), "link reference lines leaked in"
+    assert not [t for t in re.findall(r"\]\(([^)]+)\)", notes) if "://" not in t]
+    assert "blob/v0.1.0/" in notes
+
+
+def test_a_tag_with_no_changelog_section_fails_before_anything_is_published(tmp_path):
+    """The notes used to be built after the PyPI upload, so a missing section
+    failed the run only once the package was already public."""
+    result, _ = _notes(tmp_path, "# Changelog\n\n## [0.0.9] - 2026-01-01\n\n- old\n")
+    assert result.returncode != 0
+    jobs = _workflow()["jobs"]
+    assert "CHANGELOG.md" not in _runs(jobs["github-release"])
+    assert any("notes.md" in str(s.get("with", {}).get("path", "")) for s in jobs["build"]["steps"])
+
+
+def test_only_a_commit_on_main_can_be_released():
+    """A `v*` tag on a branch commit that happens to carry the version would
+    otherwise publish code main never had."""
+    build = _workflow()["jobs"]["build"]
+    checkout = next(
+        s for s in build["steps"] if str(s.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["fetch-depth"] == 0
+    runs = [str(s.get("run", "")) for s in build["steps"]]
+    guard = next(
+        i for i, r in enumerate(runs) if "merge-base --is-ancestor" in r and "origin/main" in r
+    )
+    assert guard < next(i for i, r in enumerate(runs) if "uv build" in r)
