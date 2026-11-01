@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.15-slim
 # The gateway is pure stdlib asyncio now, so nothing is pip-installed. dnsmasq
 # is the DNS sinkhole; openssl is kept for future TLS-terminating canned
 # responses.
